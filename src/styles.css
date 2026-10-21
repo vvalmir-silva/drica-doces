@@ -1,0 +1,16 @@
+@tailwind base;@tailwind components;@tailwind utilities;
+:root{font-family:'DM Sans',sans-serif;color:#49312B;background:#FFFBF7;font-synthesis:none}html{scroll-behavior:smooth}body{margin:0}button,select,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity:.55;cursor:not-allowed}img{display:block}::selection{background:#efcaca;color:#49312b}
+@layer components{
+  .btn-dark{@apply inline-flex items-center justify-center gap-2 bg-cocoa text-white rounded-full font-bold text-sm px-6 py-3.5 min-h-12 transition hover:bg-rose active:scale-[.98] disabled:opacity-50}
+  .btn-soft{@apply inline-flex items-center justify-center gap-2 rounded-full border border-[#ead7d0] bg-white text-cocoa px-5 py-3 min-h-11 font-semibold text-sm transition hover:border-rose hover:text-rose}
+  .card{@apply bg-white rounded-[24px] border border-[#f0e5df] shadow-soft}
+  .field{@apply block w-full rounded-xl border border-[#eadbd4] bg-[#fffcfa] px-3.5 py-3 min-h-12 text-base sm:text-sm text-cocoa focus:outline-none focus:ring-2 focus:ring-rose/30 focus:border-rose}
+  .label{@apply block text-xs font-bold text-cocoa mb-1.5}
+  .chip{@apply inline-flex items-center gap-2 rounded-full border border-[#edddd7] bg-white px-4 py-2 min-h-11 text-xs font-bold text-cocoa transition hover:border-rose}
+  .eyebrow{@apply text-[10px] sm:text-xs font-bold tracking-[.22em] uppercase text-rose}
+  .h2{@apply font-display text-[33px] sm:text-[43px] tracking-[-.035em] leading-tight font-normal}
+}
+@keyframes floatUp{0%{opacity:0;transform:translateY(12px)}100%{opacity:1;transform:translateY(0)}}.enter{animation:floatUp .36s ease both}input[type=date]{min-width:0}dialog::backdrop{background:#2b1a17a0}
+
+/* v4.2: conforto de toque, teclado virtual e foco acessível. */
+html{scroll-padding-top:84px}button,a,input,select,textarea{-webkit-tap-highlight-color:transparent}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #b7757f;outline-offset:3px}input,select,textarea{max-width:100%}body{overflow-x:clip}button{touch-action:manipulation}input[type=number]{font-variant-numeric:tabular-nums}@media(max-width:639px){input,select,textarea{font-size:16px!important}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
