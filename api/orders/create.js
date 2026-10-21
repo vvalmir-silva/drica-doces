@@ -3,6 +3,7 @@ const validStatus=['Retirada','Entrega'];const payMethods=['Pix','Cartão no rec
 export default handle(async(req,res)=>{
  method(req);originCheck(req);await rateLimit(req,'orders',6,3600);
  const b=req.body||{};
+ if(b.whatsapp_status_opt_in!==undefined && typeof b.whatsapp_status_opt_in!=='boolean')reject(400,'Preferência de notificações inválida.');
  const name=text(b.name,2,90),phone=digits(b.phone),mail=text(b.email||'',0,200),date=b.scheduled_at;
  if(!name||phone.length<10||phone.length>11||(mail&&!emailValid(mail))||!dateValid(date)||!validStatus.includes(b.fulfillment)||!payMethods.includes(b.payment_method))reject(400,'Dados do cliente inválidos.');
  if(b.payment_method==='Pix'&&!emailValid(mail))reject(400,'Informe e-mail para solicitar um Pix.');
@@ -46,7 +47,7 @@ export default handle(async(req,res)=>{
  const existing=await db.from('orders').select('*,order_items(*)').eq('client_request_id',idempotency).maybeSingle();if(existing.data){const o=existing.data;return send(res,200,{order:{...o,items:(o.order_items||[]).map(i=>({...i,name:i.product_name}))},access_token:idempotency,emailSent:false,duplicate:true})}
  const code='DD-'+token();const total=subtotal-discount+(fee??0);
  const safeNotes=text(b.notes||'',0,350);if(safeNotes===null)reject(400,'Observação muito longa.');
- const order={code,client_request_id:idempotency,access_hash:sha(idempotency),customer_name:name,customer_phone:phone,customer_email:mail||null,scheduled_at:date,fulfillment:b.fulfillment,cep:b.fulfillment==='Entrega'?cep:null,address:address||null,payment_method:b.payment_method,subtotal_cents:subtotal,discount_cents:discount,delivery_fee_cents:fee,total_cents:total,notes:safeNotes,coupon_code:couponCode,status:'solicitado',payment_status:'not_initiated',deposit_percent:Number(settings.deposit_percent||0)};
+ const order={code,client_request_id:idempotency,access_hash:sha(idempotency),customer_name:name,customer_phone:phone,customer_email:mail||null,scheduled_at:date,fulfillment:b.fulfillment,cep:b.fulfillment==='Entrega'?cep:null,address:address||null,payment_method:b.payment_method,subtotal_cents:subtotal,discount_cents:discount,delivery_fee_cents:fee,total_cents:total,notes:safeNotes,coupon_code:couponCode,status:'solicitado',payment_status:'not_initiated',deposit_percent:Number(settings.deposit_percent||0),whatsapp_status_opt_in:b.whatsapp_status_opt_in===true};
  const {data:created,error:err}=await db.rpc('create_checkout_order',{p_order:order,p_items:orderItems,p_slot_limit:settings.max_orders_per_slot});
  if(err){if(/lotado|indisponível|limite|capacidade|esgotada/i.test(err.message))reject(409,'Não há mais vagas neste horário.');console.error('Database checkout',err.message);reject(500,'Não foi possível registrar o pedido.')}const orderId=created.id;
  const lines=orderItems.map(i=>`${i.qty} × ${i.product_name} (${i.option_label})${i.mix_label?' | '+i.mix_label:''} — ${money((i.unit_price_cents+i.extra_cents)*i.qty)}`).join('\n');

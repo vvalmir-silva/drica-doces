@@ -19,4 +19,37 @@ export const money=c=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'
 export const dateValid=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)&&!Number.isNaN(Date.parse(`${value}:00-03:00`));
 export function verifySignature({signature,requestId,eventId,secret}){if(!signature||!requestId||!eventId||!secret)return false;const parts=Object.fromEntries(String(signature).split(',').map(x=>x.trim().split('=',2)));const ts=parts.ts,v1=parts.v1;if(!ts||!v1||!/^\d+$/.test(ts)||!/^[a-f\d]{64}$/i.test(v1))return false;const time=Number(ts);const ms=time<100000000000?time*1000:time;if(Math.abs(Date.now()-ms)>15*60*1000)return false;const manifest=`id:${String(eventId).toLowerCase()};request-id:${requestId};ts:${ts};`;const expected=createHmac('sha256',secret).update(manifest).digest('hex');return timingSafeEqual(Buffer.from(expected,'hex'),Buffer.from(v1,'hex'))}
 export async function adminAuth(req,db){const header=String(req.headers.authorization||'');const match=header.match(/^Bearer\s+(.+)$/);if(!match)reject(401,'Acesso administrativo não autorizado.');const{data:{user},error}=await db.auth.getUser(match[1]);if(error||!user)reject(401,'Sessão inválida.');const {data, error:e}=await db.from('admin_users').select('user_id').eq('user_id',user.id).maybeSingle();if(e||!data)reject(403,'Usuário não é administrador.');return user}
-export async function sendStatusWhatsApp(order,statusLabel){if(!process.env.META_WHATSAPP_TOKEN||!process.env.META_WHATSAPP_PHONE_NUMBER_ID||!process.env.META_WHATSAPP_TEMPLATE_NAME)return false;try{const r=await fetch(`https://graph.facebook.com/v22.0/${process.env.META_WHATSAPP_PHONE_NUMBER_ID}/messages`,{method:'POST',headers:{Authorization:`Bearer ${process.env.META_WHATSAPP_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify({messaging_product:'whatsapp',to:'55'+digits(order.customer_phone),type:'template',template:{name:process.env.META_WHATSAPP_TEMPLATE_NAME,language:{code:'pt_BR'},components:[{type:'body',parameters:[{type:'text',text:order.customer_name},{type:'text',text:order.code},{type:'text',text:statusLabel}]}]}}),signal:AbortSignal.timeout(9000)});return r.ok}catch{return false}}
+/**
+ * Envia APENAS template utilitário previamente aprovado no Meta WhatsApp Manager.
+ * Retorna "accepted" se a API aceitar; entrega/leitura exigem webhook próprio.
+ * Nunca afirma "enviado" quando as credenciais não estão configuradas.
+ */
+export async function sendStatusWhatsApp(order,statusLabel){
+ if(order.whatsapp_status_opt_in!==true)return {state:'no_consent'};
+ const token=process.env.META_WHATSAPP_TOKEN;
+ const phoneId=process.env.META_WHATSAPP_PHONE_NUMBER_ID;
+ const template=process.env.META_WHATSAPP_TEMPLATE_NAME;
+ const lang=process.env.META_WHATSAPP_TEMPLATE_LANG||'pt_BR';
+ const version=process.env.META_WHATSAPP_API_VERSION||'v24.0';
+ if(!token||!phoneId||!template)return {state:'not_configured'};
+ if(!/^v\d+\.0$/.test(version))return {state:'configuration_error'};
+ let phone=digits(order.customer_phone);
+ if(phone.startsWith('55')&&(phone.length===12||phone.length===13))phone=phone.slice(2);
+ if(!/^\d{10,11}$/.test(phone))return {state:'invalid_number'};
+ try{
+  const response=await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(phoneId)}/messages`,{
+   method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+   body:JSON.stringify({messaging_product:'whatsapp',to:`55${phone}`,type:'template',
+     template:{name:template,language:{code:lang},components:[{type:'body',parameters:[
+       {type:'text',text:String(order.customer_name||'Cliente').slice(0,90)},
+       {type:'text',text:String(order.code||'').slice(0,40)},
+       {type:'text',text:String(statusLabel).slice(0,100)}]}]}}),
+   signal:AbortSignal.timeout(12000)
+  });
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok){const code=String(result?.error?.code??response.status);console.error('Meta WhatsApp recusou o template; codigo:',code);return {state:'api_error',error_code:code}}
+  const message_id=result?.messages?.[0]?.id;
+  if(typeof message_id!=='string'||!message_id.startsWith('wamid.'))return {state:'unexpected_response'};
+  return {state:'accepted',message_id};
+ }catch(err){console.error('Meta WhatsApp indisponível:',err?.name||'request_error');return {state:'network_error'}}
+}

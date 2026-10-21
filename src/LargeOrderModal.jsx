@@ -32,7 +32,7 @@ export default function LargeOrderModal({quote,onClose}) {
       <div className="mt-4 rounded-2xl bg-[#f8ece8] p-4 text-sm"><strong>{heading}</strong><p className="text-taupe mt-1 break-words text-xs">{flavors}</p><p className="font-semibold text-rose mt-2">Valor sob consulta</p></div>
       <div className="grid sm:grid-cols-2 gap-3 mt-5"><label className="block"><span className="label flex gap-2 items-center"><CalendarDays size={14}/> Data desejada (opcional)</span><input type="date" className="field" value={date} onChange={e=>setDate(e.target.value)}/></label><label className="block"><span className="label flex gap-2 items-center"><Clock3 size={14}/> Horário desejado (opcional)</span><input type="time" className="field" value={time} onChange={e=>setTime(e.target.value)}/></label></div>
       <a href={url} target="_blank" rel="noopener noreferrer" className="btn-dark w-full mt-5 min-h-12 text-center"><MessageCircle size={18}/> Conversar com a Drica no WhatsApp</a>
-      <p className="text-[11px] text-taupe mt-3 text-center">A conversa será aberta no número (11) 96081-4357. Envie a mensagem no WhatsApp para consultar a disponibilidade. Nenhum pedido ou pagamento será registrado automaticamente.</p>
+      <p className="text-[11px] text-taupe mt-3 text-center">A conversa será aberta no número (11) 96082-9925. Envie a mensagem no WhatsApp para consultar a disponibilidade. Nenhum pedido ou pagamento será registrado automaticamente.</p>
     </section>
   </div>;
 }

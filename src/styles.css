@@ -14,3 +14,8 @@
 
 /* v4.2: conforto de toque, teclado virtual e foco acessível. */
 html{scroll-padding-top:84px}button,a,input,select,textarea{-webkit-tap-highlight-color:transparent}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #b7757f;outline-offset:3px}input,select,textarea{max-width:100%}body{overflow-x:clip}button{touch-action:manipulation}input[type=number]{font-variant-numeric:tabular-nums}@media(max-width:639px){input,select,textarea{font-size:16px!important}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+/* v4.6 — navegação, superfícies e formulários em telas menores */
+@media (max-width: 375px){.h2{font-size:30px}.card{border-radius:20px}header .font-display{letter-spacing:-.05em}}
+@media (min-width:1024px){section[id="depoimentos"] article.card{transition:transform .22s ease,box-shadow .22s ease}section[id="depoimentos"] article.card:hover{transform:translateY(-3px);box-shadow:0 18px 30px #4a282016}}
+textarea{resize:vertical}button,a{touch-action:manipulation}

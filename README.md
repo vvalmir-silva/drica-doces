@@ -1,3 +1,106 @@
+# Drica Doces PRO v4.7 — WhatsApp automático nas etapas da encomenda
+
+## O que foi implementado
+
+- No **Painel de Gestão → Pedidos**, ao selecionar um novo status e tocar em **Salvar**, a função protegida `/api/admin/status` grava a atualização no Supabase e tenta disparar a notificação da Meta **uma única vez para aquela transição**.
+- Status cobertos: **Solicitado → Confirmado → Em preparo → Pronto para retirada/entrega → Entregue**, além de **Cancelado**. O envio acontece quando o administrador altera o status (não quando o cliente apenas consulta o pedido). Repetir Salvar sem mudança não reenvia.
+- A mensagem contém **nome do cliente, código e etapa do pedido** e é enviada somente para pedidos novos cujo cliente marcou voluntariamente o consentimento de WhatsApp no checkout. A caixa começa **desmarcada**.
+- O painel exibe **Meta aceitou**, **sem consentimento**, **API não configurada**, **erro de conexão**, etc. Aceitação de API **não** comprova entrega ou leitura. A entrega/leitura exige webhook de status da Meta (não incluído nesta versão).
+- A Drica pode **desativar** os alertas de um pedido se o cliente pedir, pelo botão **Desativar avisos deste cliente**. Não é possível ativar avisos para pedidos sem consentimento administrativamente.
+- Se a API estiver indisponível, o painel mantém **Abrir conversa manual** para a Drica contatar o cliente. A atualização do status e a falha de envio ficam registradas independentemente.
+- O token de acesso ao WhatsApp não vai para o navegador, GitHub nem Supabase; fica exclusivamente nas variáveis do servidor Vercel.
+
+## Para publicar no projeto real já funcionando
+
+1. **Faça backup do Supabase** antes de alterar o esquema.
+2. Abra **Supabase → SQL Editor → New query** e execute somente a migração `supabase/migrations/007_whatsapp_status_notifications.sql`, **após** as migrações 001 a 006. O arquivo 007 preserva o histórico e acrescenta `orders.whatsapp_status_opt_in` e detalhes dos eventos em `notification_events`. Os pedidos antigos recebem `false` (não há consentimento retroativo).
+3. Na [Meta for Developers](https://developers.facebook.com/apps/) e no [WhatsApp Manager](https://business.facebook.com/wa/manage/message-templates/), configure uma conta do **WhatsApp Business Platform / Cloud API** apta a enviar mensagens. O número remetente deve estar associado a essa conta. O WhatsApp normal/WhatsApp Business App **sozinho não é suficiente** para habilitar a API.
+4. Crie e obtenha aprovação de um **template de UTILIDADE** em português do Brasil, com **três variáveis no corpo**, exatamente nesta ordem (nome, código, status):
+
+   `Olá {{1}}, sua encomenda {{2}} na Drica Doces foi atualizada para: {{3}}. Para acompanhar, acesse a loja e informe o código do pedido e o WhatsApp cadastrado.`
+
+   Nome sugerido para o template: `drica_atualizacao_pedido` (use o nome e idioma exatos aprovados pela Meta).
+5. No [Vercel](https://vercel.com/dashboard) → projeto `drica-doces` → **Settings → Environment Variables**, cadastre em **Production**, **somente servidor**:
+
+   ```env
+   META_WHATSAPP_TOKEN=SEU_TOKEN_DE_SERVIDOR_META
+   META_WHATSAPP_PHONE_NUMBER_ID=IDENTIFICADOR_DO_NUMERO_REMETENTE
+   META_WHATSAPP_TEMPLATE_NAME=drica_atualizacao_pedido
+   META_WHATSAPP_TEMPLATE_LANG=pt_BR
+   META_WHATSAPP_API_VERSION=v24.0
+   ```
+
+   `META_WHATSAPP_PHONE_NUMBER_ID` **não é o telefone em formato 11...**; é o identificador numérico da Meta para o telefone que envia. Use o token com permissão `whatsapp_business_messaging` e acesso ao telefone configurado. **Nunca use `VITE_`** nessas variáveis. A cobrança por mensagens de template está sujeita à tabela de preços da Meta e à categoria/país.
+6. Copie os arquivos desta v4.7 para o repositório local pelo GitHub Desktop, **Commit to main → Push origin**. Espere o novo deployment **Ready** na Vercel; faça Redeploy se adicionou credenciais após publicar.
+7. Faça um **novo pedido de teste** marcando o consentimento de WhatsApp. Entre no Painel de Gestão e altere a etapa para **Confirmado**. Confira no card do pedido se o resultado foi **Meta aceitou (entrega não confirmada)** e veja o registro em `public.notification_events`. Confira a entrega efetiva no WhatsApp real do cliente.
+
+## Diagnóstico
+
+- `no_consent`: o cliente não marcou autorização. Pedidos anteriores à migração também não estão inscritos.
+- `not_configured`: faltam `META_WHATSAPP_TOKEN`, `META_WHATSAPP_PHONE_NUMBER_ID` ou `META_WHATSAPP_TEMPLATE_NAME` na Vercel.
+- `api_error`: a Meta recusou o template (ex.: nome/idioma incorreto, não aprovado, número sem permissão ou token expirado). Consulte **Vercel → Logs** para o código da Meta (nunca compartilhe tokens).
+- `accepted`: a API devolveu um `wamid...`. Isso **não** é confirmação de entrega. O histórico grava `whatsapp_message_id` para futura conciliação com webhook.
+- `network_error`: chamada à Meta indisponível; o status do pedido continua salvo. O administrador pode usar o link manual.
+
+### Consulta de tentativas de envio (somente pelo SQL Editor do proprietário)
+
+```sql
+select n.created_at, o.code as pedido, n.status, n.whatsapp_result, n.whatsapp_sent
+from public.notification_events n
+join public.orders o on o.id=n.order_id
+order by n.created_at desc
+limit 30;
+```
+
+**Limitação:** o disparo é feito na mesma requisição do painel; não há fila de retentativas, confirmação de entrega por webhook ou monitoramento de mensagens rejeitadas depois do aceite inicial. Para escala comercial maior, recomendamos fila/worker e webhooks autenticados. A prévia HTML não acessa autenticação ou serviços reais e não dispara WhatsApp automaticamente.
+
+---
+
+# Drica Doces PRO v4.6 — Preço, fotografias, contato e depoimentos
+
+**Atualização para a loja já publicada (não refaça a instalação):**
+
+1. Envie o conteúdo desta pasta para o repositório `drica-doces` usando GitHub Desktop → Commit → Push origin. A Vercel deverá iniciar uma nova implantação.
+2. No Supabase do seu projeto, abra **SQL Editor → New query**, copie o conteúdo do arquivo **`supabase/migrations/006_prices_photos_testimonials.sql`** e clique em **Run**. **Execute somente a 006**, porque as migrações 001–005 já foram aplicadas. A 006 não modifica pedidos históricos.
+3. Verifique em **Table Editor → products** que as opções agora mostram R$ 120,00 por cento e R$ 1,20 por doce no kit personalizado; R$ 60,00 para 50. **Não publique um preço novo sem aplicar a migração 006 no banco.**
+4. Confirme na loja os cartões de três sabores com fotos correspondentes, link WhatsApp de contato **(11) 96082-9925**, acesso restrito no cabeçalho, depoimentos e rodapé simplificado.
+5. Para comentários reais: o formulário público registra os depoimentos como `pending`; o administrador os revisa e pode aprovar ou retirar no painel, aba **Depoimentos**. Sem o SQL 006 esse recurso não funcionará.
+
+**Formulário de contato:** prepara a mensagem do cliente e abre o WhatsApp. O cliente confirma o envio dentro do WhatsApp. Não é um formulário de e-mail nem grava mensagens no banco.
+
+**Fotos ilustrativas:** as três fotos estão separadas por sabor, mas devem ser substituídas por fotos próprias da Drica quando possível.
+
+**Conta administrativa:** contas reais são criadas exclusivamente pelo **Supabase → Authentication → Users**. Depois autorize o UUID do usuário em `public.admin_users`. Não há login ou senha padrão no ZIP. Se o endereço informado for `drica1209@gmailcom`, confirme e corrija o domínio antes de cadastrar. Use senha nova e forte, que não tenha sido compartilhada em mensagens. Nunca inclua senhas e chaves em arquivos do GitHub.
+
+**Testes:** prévia HTML testada em cinco larguras de tela, conferência dos valores e análise sintática JSX/JavaScript concluídas. O build React integral não foi executado neste ambiente por falta de acesso ao registro npm; confirme o resultado no Deploy da Vercel. Integrações Supabase e notificações exigem validação no servidor publicado.
+
+---
+
+> **v4.5 — Novo WhatsApp de atendimento e pedidos: (11) 96082-9925.** Para atualizar a loja publicada, envie os arquivos alterados ao GitHub e aguarde um novo deploy na Vercel. O WhatsApp abre com a mensagem pronta; o cliente confirma o envio dentro do aplicativo.
+
+# Drica Doces PRO v4.4 — WhatsApp após registro do pedido
+
+Correção para o site publicado na Vercel, com Supabase configurado:
+
+- Ao tocar em **Registrar encomenda e abrir WhatsApp**, primeiro o sistema registra o pedido no servidor. **Somente se o registro for bem-sucedido**, abre o WhatsApp na mesma aba com a mensagem preparada para **(11) 96082-9925**.
+- O cliente ainda precisa tocar em **Enviar** dentro do WhatsApp. O site **não envia mensagens automaticamente**; isso exigiria a API oficial do WhatsApp Business e aprovação.
+- O pedido continua com status **solicitado** no banco de dados, mesmo que o cliente não envie a mensagem no WhatsApp.
+- O carrinho é limpo antes de sair. Um link direto de **Abrir WhatsApp novamente** permanece na confirmação caso a abertura automática falhe.
+- Corrigido aviso de atributo `aria-live` duplicado em `MixedSweetBuilder.jsx`.
+- Atualizada a chave de cache do service worker, para facilitar substituição da versão antiga.
+
+## Atualizar o site já publicado
+
+1. Extraia este ZIP e copie **todo o conteúdo** para a pasta local do repositório `drica-doces` já clonado com GitHub Desktop, substituindo arquivos.
+2. No GitHub Desktop, clique em **Commit to main** e depois **Push origin**.
+3. A Vercel deverá implantar automaticamente o novo commit. Confira em **Deployments** se está **Ready**.
+4. Faça um novo pedido de teste, abra o WhatsApp, confira o número **(11) 96082-9925** e toque em **Enviar** para mandar a mensagem.
+5. Verifique a tabela `public.orders` e o código do pedido. **Não execute novamente as migrações SQL**; esta atualização altera somente o front-end e a chave de cache.
+
+> Se seu navegador bloquear a abertura automática, use o botão **Abrir WhatsApp novamente** na tela de confirmação. O registro do pedido e a entrega da mensagem no WhatsApp são operações distintas.
+
+---
+
 # Drica Doces PRO v4.3 — imagem de brigadeiro no destaque
 
 - O destaque superior agora usa fotografia de brigadeiro tradicional obtida do Wikimedia Commons; a URL externa é usada **somente para esta fotografia**.
@@ -59,7 +162,7 @@
 - **Cliente:** acompanhamento individual pelo código + WhatsApp do pedido. Alterar o código/telefone na consulta esconde imediatamente a resposta anterior, evitando revelar acidentalmente dados de outra consulta.
 - **Configurador:** botão **Zerar seleção**, preço por sabor, cálculo instantâneo e valor inicial R$ 0,00.
 - **Pedido por WhatsApp:** após registrar a solicitação, a prévia limpa carrinho, quantidades, preço e formulário antes de sair para o WhatsApp. Não salva código e telefone automaticamente nos campos públicos de acompanhamento. Mostra um aviso de solicitação com código copiável antes do redirecionamento; no React, o código tem botão para copiar antes de abrir o WhatsApp.
-- **Pedidos de festa:** mantidos os 3 sabores, o WhatsApp `(11) 96081-4357`, mínimo de 50 docinhos e atendimento especial acima de 500 unidades.
+- **Pedidos de festa:** mantidos os 3 sabores, o WhatsApp `(11) 96082-9925`, mínimo de 50 docinhos e atendimento especial acima de 500 unidades.
 - **PWA:** identificador de cache estático incrementado para `drica-static-v400`.
 
 ## Segurança e implantação
@@ -90,7 +193,7 @@ O botão do WhatsApp **abre a conversa com texto preparado**, mas **não pode co
 ## Regra atualizada na v3.13
 
 - Foram removidos os atalhos de 500 e 1.000 doces do configurador. A quantidade continua podendo ser digitada manualmente.
-- **Até 500 docinhos (inclusive):** pedido normal. **501 ou mais:** pop-up de consulta pelo WhatsApp (11) 96081-4357, com data e horário desejados.
+- **Até 500 docinhos (inclusive):** pedido normal. **501 ou mais:** pop-up de consulta pelo WhatsApp (11) 96082-9925, com data e horário desejados.
 - O limite considera **a soma de unidades de docinhos de todos os kits no carrinho**, não somente o valor em reais. O preço-base anterior de R$ 100,00 por 100 unidades continua ilustrado.
 - A regra também é validada no endpoint de criação de pedidos (para o sistema publicado com backend).
 - A versão HTML continua sendo uma demonstração local. Para publicar com banco de dados e administração, é necessário configurar e testar o Supabase.
@@ -100,7 +203,7 @@ O botão do WhatsApp **abre a conversa com texto preparado**, mas **não pode co
 ## Novidade
 
 - Removido o atalho de **500 doces / R$ 500,00** do configurador.
-- Para **encomendas acima de 500 docinhos** (soma das unidades de todos os kits), o cliente é direcionado a uma consulta especial com pop-up e botão para WhatsApp **(11) 96081-4357**.
+- Para **encomendas acima de 500 docinhos** (soma das unidades de todos os kits), o cliente é direcionado a uma consulta especial com pop-up e botão para WhatsApp **(11) 96082-9925**.
 - O pop-up exibe uma mensagem de boas-vindas, a quantidade e a composição dos sabores, permite informar **data e horário desejados (opcionais)** e prepara uma mensagem no WhatsApp solicitando a disponibilidade de produção, o melhor horário e orçamento. A mensagem só é enviada quando o cliente confirma dentro do WhatsApp.
 - Para pedidos especiais o configurador mostra **Valor sob consulta**, sem presumir que a Drica aceitará o pedido ou manterá o preço proporcional.
 - A aplicação bloqueia tentativas de registrar quantidades acima do limite no checkout React, na simulação local e no endpoint `api/orders/create.js`.
@@ -127,7 +230,7 @@ Quando o cliente abre o WhatsApp a partir da encomenda, limpa-se carrinho, sele�
 
 Esta versão utiliza chaves novas (`drica-demo-cart-v39` e `drica-cart-v39`) e descarta os carrinhos antigos presos na versão anterior, **preservando** os registros para acompanhamento pelo código. O pedido registrado não é apagado.
 
-**Envio:** a mensagem é aberta para **(11) 96081-4357**, mas o cliente precisa tocar em Enviar dentro do WhatsApp. A loja não consegue confirmar que a mensagem foi enviada.
+**Envio:** a mensagem é aberta para **(11) 96082-9925**, mas o cliente precisa tocar em Enviar dentro do WhatsApp. A loja não consegue confirmar que a mensagem foi enviada.
 
 # Drica Doces PRO v3.8 — Carrinho zerado após abrir WhatsApp
 
@@ -161,7 +264,7 @@ Não há usuário nem senha administrativa padrão no projeto. No modo de produ�
 
 # Atualização v3.6.2 — WhatsApp de pedidos
 
-O destino de todos os links de pedido e contato da loja foi alterado para **(11) 96081-4357** (`5511960814357`). Na prévia HTML, o botão **Enviar pedido via WhatsApp** agora abre diretamente uma nova aba/conversa com o pedido preenchido e mantém o link manual como alternativa se o navegador bloquear a abertura. No React, o botão usa o mesmo destino configurado. **O cliente precisa confirmar o envio dentro do WhatsApp**; o site sozinho não consegue mandar mensagens automaticamente.
+O destino de todos os links de pedido e contato da loja foi alterado para **(11) 96082-9925** (`5511960829925`). Na prévia HTML, o botão **Enviar pedido via WhatsApp** agora abre diretamente uma nova aba/conversa com o pedido preenchido e mantém o link manual como alternativa se o navegador bloquear a abertura. No React, o botão usa o mesmo destino configurado. **O cliente precisa confirmar o envio dentro do WhatsApp**; o site sozinho não consegue mandar mensagens automaticamente.
 
 # Drica Doces PRO v3.6.1
 
@@ -227,7 +330,7 @@ Atualização aplicada:
 A loja React agora usa `src/GuidedCheckout.jsx`, um checkout mobile-first em **três etapas**:
 
 1. **Carrinho:** conferência de produtos, quantidades e personalização; incremento/decremento, exclusão e retorno ao catálogo. O carrinho vazio impede qualquer avanço, pagamento ou geração de pedido.
-2. **Entrega:** nome, telefone, e-mail, data e horário, retirada/entrega, busca automática de CEP via ViaCEP. Mostra a taxa de entrega da região cadastrada no painel, ou um botão de **consulta de frete pelo WhatsApp (11) 96081-4357** quando o CEP ainda não possui tarifa.
+2. **Entrega:** nome, telefone, e-mail, data e horário, retirada/entrega, busca automática de CEP via ViaCEP. Mostra a taxa de entrega da região cadastrada no painel, ou um botão de **consulta de frete pelo WhatsApp (11) 96082-9925** quando o CEP ainda não possui tarifa.
 3. **Confirmação:** revisão de itens, quantidades, data, endereço, subtotal, taxa, cupom, total previsto e pagamento preferido. O cliente pode voltar e corrigir dados; só registra uma solicitação após concluir a conferência. A tela final mostra o código do pedido e o botão para abrir o WhatsApp com texto pronto; o cliente precisa tocar em **Enviar** no WhatsApp.
 
 **Integridade comercial:** entregas sem tarifa cadastrada são barradas **também** em `api/orders/create.js`, bem como no cálculo da demo em `src/api.js`; `allow_delivery_without_zone` é mantido no schema por compatibilidade, mas não autoriza checkout sem preço de frete. Se o CEP não for atendido, o cliente consulta pelo WhatsApp ou seleciona retirada. A taxa cadastrada é exibida antes de seguir para pagamento. O servidor continua recalculando todos os preços e validando cupons em produção. No React conectado, o valor do cupom é validado ao registrar a encomenda e o total definitivo é mostrado antes de gerar um Pix.
@@ -240,7 +343,7 @@ A loja React agora usa `src/GuidedCheckout.jsx`, um checkout mobile-first em **t
 
 - Sintaxe React JSX validada via transpiler TypeScript para `src/App.jsx` e `src/GuidedCheckout.jsx`; sintaxe JavaScript do servidor validada com `npm run check`.
 - Testes funcionais da **prévia HTML** em Chromium via Playwright, viewport **320, 375, 430, 768 e 1280 px**, sem rolagem horizontal ou erros JS observados: carrinho vazio, edição, validação, etapas de entrega, bloqueio para CEP sem frete e remoção do último item.
-- Teste de ponta a ponta **apenas na prévia HTML local**, com taxa de demonstração de **R$ 7,00** cadastrada para prefixo `010`: revisão do frete, pedido local e geração de link WhatsApp para `5511960814357` com o resumo correto.
+- Teste de ponta a ponta **apenas na prévia HTML local**, com taxa de demonstração de **R$ 7,00** cadastrada para prefixo `010`: revisão do frete, pedido local e geração de link WhatsApp para `5511960829925` com o resumo correto.
 - `npm install --offline` **não concluiu**, porque `@supabase/supabase-js` não estava no cache. Portanto, build React, teste de integração real, e-mails, pagamento Pix, Supabase e deploy **não foram executados** neste ambiente.
 
 ---
@@ -271,7 +374,7 @@ A loja React agora usa `src/GuidedCheckout.jsx`, um checkout mobile-first em **t
 - Layout premium rosa-bebê, creme e marrom-chocolate, navegação responsiva, cards e fotografias ilustrativas, catálogo por categorias.
 - Quatro doces: Brigadeiro Gourmet e Beijinho (unidade/cento), Cone Recheado de Brigadeiro e Cone de Beijinho (unidade).
 - Carrinho lateral (persistido no navegador), quantidades, remoção, opção de embalagem para presente e mensagem especial por doce.
-- Checkout para retirada/entrega com ViaCEP, hora/data, campo de cupom, Pix ou cartão no recebimento, observações, WhatsApp **(11) 96081-4357**.
+- Checkout para retirada/entrega com ViaCEP, hora/data, campo de cupom, Pix ou cartão no recebimento, observações, WhatsApp **(11) 96082-9925**.
 - Consulta por código de pedido + telefone, com status recebido/confirmado/preparando/pronto/entregue/cancelado e acompanhamento do pagamento.
 - Painel administrativo: gestão de pedidos, edição/cadastro de doces e preços, fotos por URL, cupons, regiões por prefixo de CEP/taxas, bloqueio de datas, antecedência mínima, capacidade de agendamento, embalagem, Instagram, horários e fidelidade.
 - Registro de pedidos **no servidor com validação de preços**, bloqueio de concorrência para horário cheio por transação SQL, limite antiabuso Redis e RLS para dados privados.
@@ -342,7 +445,7 @@ O servidor cria Pix com `X-Idempotency-Key`, consulta a cobrança real pelo ID n
 
 ## 5 — WhatsApp e fidelidade
 
-- Solicitações vão para **5511960814357**, com resumo montado depois de registrar pedido. O cliente deve apertar **Enviar** no WhatsApp; o site não pode verificar o envio.
+- Solicitações vão para **5511960829925**, com resumo montado depois de registrar pedido. O cliente deve apertar **Enviar** no WhatsApp; o site não pode verificar o envio.
 - Notificações automáticas do **WhatsApp Business Platform/Meta** exigem número comercial habilitado e template aprovado em português do Brasil com **três variáveis** (`nome`, `código`, `status`). Defina `META_WHATSAPP_TOKEN`, `META_WHATSAPP_PHONE_NUMBER_ID`, `META_WHATSAPP_TEMPLATE_NAME` no ambiente de servidor. Sem isso, use o link manual do painel. Pode haver custos do serviço.
 - Para cupons de fidelidade pessoais, configure uma string longa aleatória em `LOYALTY_PEPPER`, somente no servidor. Ao completar o número de encomendas **entregues** definido em Configurações, um cupom pessoal será gerado com limite de um uso. O cliente recebe por e-mail se tiver informado endereço; senão o cupom estará visível na aba Cupons do painel.
 

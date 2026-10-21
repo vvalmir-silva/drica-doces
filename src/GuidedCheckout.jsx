@@ -3,7 +3,7 @@ import {ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Copy, CreditC
 import {WHATSAPP, DEMO_COUPONS, dateBR, digits, localToday, money, prepareWhatsApp} from './data.js';
 import {createOrder, getDemo, isLive, payPix, checkAvailability} from './api.js';
 
-const empty = {name:'', phone:'', email:'', cpf:'', scheduled_at:'', fulfillment:'Retirada', payment_method:'Cartão no recebimento', cep:'', street:'', number:'', complement:'', neighborhood:'', city:'', state:'', notes:'', coupon:''};
+const empty = {name:'', phone:'', email:'', cpf:'', scheduled_at:'', fulfillment:'Retirada', payment_method:'Cartão no recebimento', cep:'', street:'', number:'', complement:'', neighborhood:'', city:'', state:'', notes:'', coupon:'', whatsapp_status_opt_in:false};
 const steps = ['Carrinho', 'Entrega', 'Confirmação'];
 const asClock = (value) => `${value || ''}:00-03:00`;
 
@@ -106,6 +106,15 @@ export default function GuidedCheckout({cart,products,settings,zones,blocked,onF
     return '';
   }
   function advance(){const e=validateDelivery();if(e){setValidation(e);onNotify(e);return;}setValidation('');setStep(3);}
+  // Usa navegação na própria aba: alguns navegadores bloqueiam janelas novas
+  // após uma chamada assíncrona ao servidor. O pedido já fica salvo no Supabase.
+  function openOrderWhatsApp(order){
+    const url=prepareWhatsApp(order);
+    try{sessionStorage.setItem('drica-wpp-handoff-v39','1')}catch{}
+    onFinished(); // Limpa o carrinho persistido antes de sair do site.
+    setStep(1);setForm(empty);setPix(null);setValidation('');
+    window.location.assign(url);
+  }
   async function submit(e){
     e.preventDefault();
     if(largeOrder){onLargeOrder?.();return;}
@@ -116,9 +125,13 @@ export default function GuidedCheckout({cart,products,settings,zones,blocked,onF
     try{
       const payload={...form,phone:digits(form.phone),cep:digits(form.cep),cpf:undefined,items:cart.map(c=>({...c})),client_request_id:(crypto.randomUUID?.()||('00000000-0000-4000-8000-'+Math.random().toString(16).slice(2).padEnd(12,'0').slice(0,12)))};
       const response=await createOrder(payload,{products,settings,zones,blocked,coupons:isLive?[]:(getDemo().coupons||undefined)});
-      setResult({...response.order,access_token:response.access_token||response.order.access_token});
-      if(response.isDemo)onNotify('Pedido de demonstração salvo neste aparelho. Envie a mensagem no WhatsApp.');
-      else if(!response.emailSent)onNotify('Solicitação registrada. O aviso por e-mail pode não ter sido entregue.');
+      const savedOrder={...response.order,access_token:response.access_token||response.order.access_token};
+      setResult(savedOrder);
+      if(response.isDemo)onNotify('Pedido salvo nesta demonstração. Abra o WhatsApp e confirme o envio da mensagem.');
+      else if(!response.emailSent)onNotify('Pedido registrado. O aviso por e-mail pode não ter sido entregue.');
+      // Abertura imediata após confirmação no banco, sem exigir segundo clique.
+      // Se o WhatsApp não abrir, a confirmação preserva o link para tentar novamente.
+      openOrderWhatsApp(savedOrder);
     }catch(err){setValidation(err.message||'Não foi possível registrar o pedido.');onNotify(err.message||'Erro ao registrar pedido.');}
     finally{setBusy(false)}
   }
@@ -132,16 +145,12 @@ export default function GuidedCheckout({cart,products,settings,zones,blocked,onF
           {largeOrder?<div className="space-y-4 py-6 text-center"><h3 className="font-display text-2xl">Encomenda especial</h3><p className="text-sm text-taupe">Para pedidos acima de 500 docinhos, consulte disponibilidade, data e horário diretamente com a Drica.</p><button type="button" className="btn-dark w-full" onClick={onLargeOrder}><MessageCircle size={17}/> Consultar pelo WhatsApp</button></div>:result?<div className="space-y-5" aria-live="polite">
             <div className="bg-[#edf7ed] rounded-2xl p-5 text-center"><CheckCircle2 size={35} className="mx-auto text-[#398253]"/><p className="eyebrow mt-3">Solicitação registrada</p><h3 className="font-display text-3xl mt-2">{result.code}</h3><button type="button" className="mt-2 rounded-full bg-white px-4 py-2 border border-[#cce3d1] text-xs font-bold text-[#2c6849] inline-flex items-center gap-2" onClick={async()=>{try{await navigator.clipboard.writeText(result.code);onNotify("Código copiado!")}catch{onNotify("Copie o código exibido para acompanhar o pedido.")}}}><Copy size={14}/> Copiar código</button><p className="text-xs text-taupe mt-2">Guarde o código para acompanhar seu pedido. A encomenda ainda precisa ser confirmada pela Drica.</p></div>
             <div className="space-y-2"><Line label="Subtotal" value={money(result.subtotal_cents)}/><Line label="Desconto" value={money(result.discount_cents||0)}/><Line label="Entrega" value={result.delivery_fee_cents===null?'A confirmar':money(result.delivery_fee_cents||0)}/><Line label="Total do pedido" value={money(result.total_cents)} strong/></div>
-            <a className="btn-dark w-full min-h-12 text-center" href={prepareWhatsApp(result)} onClick={(event)=>{
-              // O pedido já foi registrado. Limpar tudo ANTES de sair para o WhatsApp.
-              event.preventDefault();
-              const url=prepareWhatsApp(result);
+            <a className="btn-dark w-full min-h-12 text-center" href={prepareWhatsApp(result)} onClick={()=>{
+              // Link nativo: não impedir o comportamento padrão do navegador.
               try{sessionStorage.setItem('drica-wpp-handoff-v39','1')}catch{}
-              onFinished();
-              setResult(null);setStep(1);setForm(empty);setPix(null);setValidation('');
-              window.location.assign(url);
-            }}><MessageCircle size={18}/> Enviar pedido via WhatsApp</a>
-            <p className="text-xs text-taupe text-center">O WhatsApp abrirá com a mensagem pronta; toque em Enviar para encaminhá-la.</p>
+              onFinished();setStep(1);setForm(empty);setPix(null);setValidation('');
+            }}><MessageCircle size={18}/> Abrir WhatsApp novamente</a>
+            <p className="text-xs text-taupe text-center">A encomenda já foi registrada no sistema. Se o WhatsApp não abriu automaticamente, toque no botão acima. Confira a mensagem e toque em Enviar dentro do WhatsApp.</p>
             {result.payment_method==='Pix'&&<div className="bg-[#fff9f5] rounded-xl border p-4 text-xs leading-6 text-taupe"><strong>Pix somente depois da confirmação.</strong><p>Quando a Drica confirmar a encomenda, use “Meu pedido”, informe seu código e WhatsApp, e gere o Pix com CPF. Se houver sinal configurado, o valor será calculado pelo servidor. Não efetue pagamentos na demonstração.</p></div>}
             <button type="button" className="text-sm text-rose underline font-bold" onClick={()=>{setResult(null);setStep(1);setForm(empty);setPix(null)}}>Iniciar outra encomenda</button>
           </div>:!hasItems?<div role="status" className="text-center py-9 sm:py-14"><ShoppingBag size={48} className="mx-auto text-rose opacity-60"/><h3 className="font-display text-3xl mt-5">Carrinho vazio ♡</h3><p className="text-taupe mt-3 mb-6 text-sm">Adicione pelo menos um doce antes de escolher entrega e pagamento.</p><button type="button" className="btn-dark min-h-12" onClick={onBrowse}><ShoppingBag size={16}/> Ver cardápio <ArrowRight size={16}/></button></div>:<>
@@ -190,11 +199,15 @@ export default function GuidedCheckout({cart,products,settings,zones,blocked,onF
               <div className="bg-[#fff9f5] rounded-xl p-4 space-y-2"><p className="eyebrow">Itens da encomenda</p>{rows.map(r=><div className="flex justify-between gap-2 text-xs" key={r.line_key||r.option_id}><span>{r.qty} × {r.product.name} — {r.option.label}{r.mix_label?` · ${r.mix_label}`:''}</span><strong className="shrink-0">{money((r.option.price_cents+(r.gift_wrap?settings.gift_wrap_cents:0))*r.qty)}</strong></div>)}</div>
               <div className="rounded-xl border border-[#f0e5df] p-4 text-xs space-y-1"><p><strong>Cliente:</strong> {form.name}</p><p><strong>WhatsApp:</strong> {form.phone}</p><p><strong>Data:</strong> {dateBR(form.scheduled_at)}</p><p><strong>Recebimento:</strong> {form.fulfillment}</p>{form.fulfillment==='Entrega'&&<p className="break-words"><strong>Endereço:</strong> {form.street}, {form.number}, {form.neighborhood}, {form.city}/{form.state} · CEP {form.cep}</p>}<button type="button" className="text-rose underline font-bold pt-2" onClick={()=>{setStep(2);setValidation('')}}>Corrigir dados ou endereço</button></div>
               <div className="grid sm:grid-cols-2 gap-3"><Field title="Pagamento preferido *"><select className="field" value={form.payment_method} onChange={e=>set('payment_method',e.target.value)}><option>Cartão no recebimento</option><option>Pix</option></select></Field><Field title="Cupom promocional"><input className="field uppercase" maxLength={24} placeholder="Cupom" value={form.coupon} onChange={e=>set('coupon',e.target.value.toUpperCase())}/></Field></div>
+              <label className="flex items-start gap-3 rounded-2xl border border-[#eadbd6] bg-[#fffaf7] p-4 cursor-pointer">
+                <input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-[#b7757f]" checked={form.whatsapp_status_opt_in} onChange={e=>set('whatsapp_status_opt_in',e.target.checked)}/>
+                <span className="text-xs leading-6 text-cocoa"><strong>Quero receber atualizações desta encomenda pelo WhatsApp.</strong> Autorizo a Drica Doces a enviar mensagens sobre confirmação, preparo, pedido pronto, entrega ou cancelamento ao número que informei. É opcional; posso solicitar o cancelamento dos avisos pelo WhatsApp da loja.</span>
+              </label>
               {form.payment_method==='Pix'&&<div className="bg-[#fff7f3] border rounded-xl p-3 space-y-3"><p className="font-bold text-xs">Dados necessários para gerar o Pix</p><Field title="CPF (11 dígitos) *"><input className="field" inputMode="numeric" maxLength={14} value={form.cpf} onChange={e=>set('cpf',e.target.value)} placeholder="Somente números"/></Field><Field title="E-mail *"><input className="field" type="email" value={form.email} onChange={e=>set('email',e.target.value)} placeholder="voce@email.com"/></Field><p className="text-xs text-taupe">Pix depende de Mercado Pago configurado. {Number(settings.deposit_percent||0)>0?`Sinal previsto de ${settings.deposit_percent}% após a Drica confirmar disponibilidade; saldo restante a combinar.`:"Pagamento integral, sujeito à confirmação."} Não pague até receber instruções seguras da Drica.</p></div>}
               <Field title="Observações especiais (opcional)"><textarea className="field" rows={2} maxLength={350} value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Informe preferências ou detalhes da encomenda"/></Field>
               <div className="space-y-2 border-t pt-4"><Line label="Subtotal" value={money(subtotal)}/><Line label="Frete" value={money(fee)}/>{form.coupon&&<Line label={isLive?'Desconto (validado pelo servidor)':'Desconto demonstrativo'} value={isLive?'A validar':`− ${money(discount)}`}/>}<Line label={isLive&&form.coupon?'Total antes da validação do cupom':'Total previsto'} value={money(total)} strong/>{form.coupon&&isLive&&<p className="text-xs text-taupe">O total definitivo, com o cupom validado, aparecerá após registrar a solicitação e antes de gerar o Pix.</p>}</div>
-              <div className="flex gap-2"><button className="btn-soft min-h-12" type="button" onClick={()=>{setStep(2);setValidation('')}}><ArrowLeft size={16}/> Voltar</button><button disabled={!hasItems||noFreight||busy} className="btn-dark flex-1 min-h-12" type="submit"><ClipboardList size={16}/>{busy?'Registrando...':'Registrar encomenda'}</button></div>
-              <p className="text-xs text-taupe leading-5">Você revisou o pedido. Depois do registro, toque no botão do WhatsApp para enviar a solicitação. A Drica confirmará disponibilidade e pagamento.</p>
+              <div className="flex gap-2"><button className="btn-soft min-h-12" type="button" onClick={()=>{setStep(2);setValidation('')}}><ArrowLeft size={16}/> Voltar</button><button disabled={!hasItems||noFreight||busy} className="btn-dark flex-1 min-h-12" type="submit"><ClipboardList size={16}/>{busy?'Registrando...':'Registrar encomenda e abrir WhatsApp'}</button></div>
+              <p className="text-xs text-taupe leading-5">Você revisou o pedido. Após o registro, o WhatsApp será aberto com a mensagem preparada. Confirme o envio dentro do WhatsApp; a Drica responderá sobre disponibilidade e pagamento.</p>
             </form>}
           </>}
         </div>
