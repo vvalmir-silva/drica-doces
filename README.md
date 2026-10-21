@@ -1,3 +1,15 @@
+# Drica Doces PRO v4.8 — correção do carregamento do painel de pedidos
+
+**O que foi corrigido:** a consulta das encomendas (`orders`) não depende mais do sucesso das consultas de estoque, pagamentos, notificações e depoimentos. Se uma dessas tabelas estiver ausente ou com permissão incorreta, as encomendas continuarão visíveis aos administradores autorizados, acompanhadas de um aviso específico. Itens de cada pedido são buscados separadamente; erro neles não oculta as encomendas. Erros na consulta principal aparecem em uma mensagem persistente e existe um botão `Atualizar pedidos`.
+
+**Segurança preservada:** todas as consultas continuam usando a sessão do administrador com RLS do Supabase; nenhum acesso público à tabela `orders` foi aberto. Esta versão não requer nova migração SQL e não altera pedidos já gravados. **Execute as migrações 006 e 007 somente se ainda não as tiver aplicado.** Não repita migrações antigas sem necessidade.
+
+**Passos para atualizar:** substitua os arquivos do seu repositório pelo conteúdo deste ZIP, faça Commit e Push no GitHub Desktop e espere o novo deployment Ready da Vercel. Abra o painel e clique em `Atualizar pedidos`. Se continuar vazio, execute as consultas somente-leitura de `DIAGNOSTICO-PAINEL.sql` no SQL Editor. Confirme se o login administrativo foi autorizado em `admin_users` e se o painel usa o mesmo projeto Supabase onde os pedidos foram gravados. Não envie as chaves privadas ou senhas para suporte.
+
+**Teste aplicado:** testes automatizados com consultas simuladas confirmaram que pedidos permanecem visíveis quando tabelas auxiliares falham; erros reais na tabela `orders` não são mascarados como ausência de pedidos. Sintaxe dos arquivos JS/JSX conferida. **Integração ao vivo com o Supabase da sua conta e build final na Vercel ainda dependem de validação depois do deploy.**
+
+---
+
 # Drica Doces PRO v4.7 — WhatsApp automático nas etapas da encomenda
 
 ## O que foi implementado
