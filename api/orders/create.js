@@ -13,7 +13,7 @@ export default handle(async(req,res)=>{
  if(b.whatsapp_status_opt_in!==undefined && typeof b.whatsapp_status_opt_in!=='boolean')reject(400,'Preferência de notificações inválida.');
  const name=text(b.name,2,90),phone=digits(b.phone),mail=text(b.email||'',0,200),date=b.scheduled_at;
  if(!name||phone.length<10||phone.length>11||(mail&&!emailValid(mail))||!dateValid(date)||!validStatus.includes(b.fulfillment)||!payMethods.includes(b.payment_method))reject(400,'Dados do cliente inválidos.');
- if(b.payment_method==='Pix'&&!emailValid(mail))reject(400,'Informe e-mail para solicitar um Pix.');
+ if(b.payment_method==='Pix'&&!(process.env.MERCADOPAGO_ACCESS_TOKEN&&String(process.env.PUBLIC_SITE_URL||'').startsWith('https://')))reject(400,'Pix ainda não está disponível. Escolha cartão no recebimento.');if(b.payment_method==='Pix'&&!emailValid(mail))reject(400,'Informe e-mail para solicitar um Pix.');
  const minNow=Date.now(),chosen=Date.parse(`${date}:00-03:00`);
  const {data:settings,error:serr}=await db.from('shop_settings').select('*').eq('id',1).single();if(serr||!settings)reject(503,'Configuração da loja indisponível.');
  if(chosen<minNow+settings.min_hours*3600000)reject(400,`Antecedência mínima de ${settings.min_hours} horas.`);

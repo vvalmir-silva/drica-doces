@@ -1,12 +1,33 @@
-import React,{useMemo,useState} from 'react';
-import {maskPhone} from './ui.jsx';
-import {MessageCircle,Send,Heart,CalendarDays,HelpCircle,Phone} from 'lucide-react';
-import {WHATSAPP} from './data.js';
-export default function ContactSection(){
- const [form,setForm]=useState({name:'',phone:'',topic:'Dúvidas sobre encomendas',message:''});
- const message=useMemo(()=>`Olá, Drica! 💗 Gostaria de tirar uma dúvida sobre uma encomenda.\n\n*Nome:* ${form.name.trim()}\n*Telefone:* ${form.phone.trim()||'Não informado'}\n*Assunto:* ${form.topic}\n*Dúvida:* ${form.message.trim()}\n\nAguardo seu retorno. Muito obrigado(a)!`,[form]);
- const url=`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(message)}`;
- return <section id="contato" className="bg-[#fffbf7] py-14 sm:py-20 scroll-mt-24"><div className="max-w-6xl mx-auto px-4 sm:px-7 grid lg:grid-cols-[.88fr_1.12fr] gap-8 lg:gap-14 items-center">
- <div><p className="eyebrow">✦ Estamos por aqui</p><h2 className="h2 mt-3">Ficou alguma <em className="text-rose">dúvida?</em></h2><p className="text-sm sm:text-base text-taupe mt-5 leading-relaxed">Quer saber sobre sabores, valores, datas, quantidades ou entrega? Envie sua pergunta para a Drica. Será um carinho ajudar você a planejar seu momento especial.</p><div className="mt-6 flex gap-3 items-center text-sm text-cocoa"><div className="p-3 bg-blush rounded-2xl text-rose"><MessageCircle size={21}/></div><div><strong>Atendimento pelo WhatsApp</strong><p className="text-xs text-taupe mt-1">(11) 96082-9925 · confirmação de envio no aplicativo</p></div></div></div>
- <div className="card p-5 sm:p-8 border-[#ead4d0]"><h3 className="font-display text-2xl">Fale com a Drica ♡</h3><p className="text-xs text-taupe mt-2">Preencha os campos e abra a conversa com sua mensagem pronta.</p><form className="grid sm:grid-cols-2 gap-4 mt-5" onSubmit={e=>{e.preventDefault();window.open(url,'_blank','noopener,noreferrer')}}><label className="block"><span className="label">Seu nome *</span><input className="field" required minLength={2} maxLength={80} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Seu nome"/></label><label className="block"><span className="label">WhatsApp (opcional)</span><input className="field" inputMode="tel" type="tel" inputMode="tel" autoComplete="tel-national" maxLength={16} value={form.phone} onChange={e=>setForm(f=>({...f,phone:maskPhone(e.target.value)}))} placeholder="(11) 99999-9999"/></label><label className="sm:col-span-2 block"><span className="label">Sobre o que deseja conversar?</span><select className="field" value={form.topic} onChange={e=>setForm(f=>({...f,topic:e.target.value}))}>{['Dúvidas sobre encomendas','Sabores e ingredientes','Data e disponibilidade','Entrega ou retirada','Pagamento','Outras dúvidas'].map(s=><option key={s}>{s}</option>)}</select></label><label className="sm:col-span-2 block"><span className="label">Sua mensagem *</span><textarea className="field min-h-[125px]" required minLength={5} maxLength={1000} value={form.message} onChange={e=>setForm(f=>({...f,message:e.target.value}))} placeholder="Conte sua dúvida com detalhes para a Drica te ajudar..."/></label><button type="submit" className="btn-dark sm:col-span-2 w-full !min-h-14"><Send size={17}/> Conversar no WhatsApp</button></form><p className="text-[11px] text-taupe mt-3">O WhatsApp será aberto com seu texto preenchido. Toque em Enviar na conversa para concluir o contato.</p></div></div></section>;
+import React from 'react';
+import {ChevronDown,MessageCircle} from 'lucide-react';
+import {WHATSAPP,money} from './data.js';
+
+/** Dúvidas frequentes + atalho para o WhatsApp (substitui o formulário longo). */
+export default function ContactSection({settings={},products=[],deliveryOn=false}){
+ const unit=products.find(p=>p.id==='cento-misto')?.options?.find(o=>o.id==='mixed-custom')?.price_cents;
+ const cento=products.flatMap(p=>p.options||[]).find(o=>/(^|-)hundred$/.test(o.id))?.price_cents;
+ const hours=Number(settings.min_hours??24);
+ const faq=[
+  ['Qual é o pedido mínimo?',`Os kits personalizados começam em 50 docinhos e você escolhe os sabores${unit?` (${money(unit)} por docinho)`:''}. Os sabores avulsos são vendidos por cento${cento?` (${money(cento)})`:''}.`],
+  ['Com quanta antecedência devo encomendar?',`Pelo menos ${hours} horas antes. Para festas grandes ou datas concorridas, quanto antes melhor — a Drica confirma a disponibilidade pelo WhatsApp.`],
+  ['Vocês fazem entrega?',deliveryOn?'Sim, nas regiões atendidas. A taxa é calculada pelo CEP no momento do pedido; também é possível retirar.':'No momento os pedidos pelo site são para retirada. Para entrega, consulte a Drica pelo WhatsApp.'],
+  ['E se eu precisar de mais de 500 docinhos?','Pedidos acima de 500 docinhos são combinados direto com a Drica pelo WhatsApp, para garantir data, horário e produção.'],
+  ['Como acompanho meu pedido?','Toque em “Acompanhar pedido” (no menu ou no rodapé) e informe o código recebido e o WhatsApp usado na encomenda.'],
+ ];
+ const url=`https://wa.me/${WHATSAPP}?text=${encodeURIComponent('Olá, Drica! Vim pelo site e tenho uma dúvida sobre encomendas.')}`;
+ return <section id="contato" className="bg-[#fffbf7] py-14 sm:py-20 scroll-mt-24"><div className="max-w-6xl mx-auto px-4 sm:px-7 grid lg:grid-cols-[.85fr_1.15fr] gap-8 lg:gap-14 items-start">
+  <div className="lg:sticky lg:top-28">
+   <p className="eyebrow">✦ Estamos por aqui</p>
+   <h2 className="h2 mt-3">Ficou alguma <em className="text-rose">dúvida?</em></h2>
+   <p className="text-sm sm:text-base text-taupe mt-4 leading-relaxed">Veja as perguntas mais comuns ou fale direto com a Drica — ela responde pelo WhatsApp.</p>
+   <a href={url} target="_blank" rel="noopener noreferrer" className="btn-dark mt-6 !min-h-14 !bg-[#1f7a4d] hover:!bg-[#17623d] w-full sm:w-auto"><MessageCircle size={19}/> Chamar no WhatsApp</a>
+   <p className="text-xs text-taupe mt-3">(11) 96082-9925</p>
+  </div>
+  <div className="space-y-3">
+   {faq.map(([q,a])=><details key={q} className="group card !rounded-2xl px-5 py-1 open:shadow-soft">
+    <summary className="flex items-center justify-between gap-4 cursor-pointer list-none min-h-14 font-semibold text-[15px] text-cocoa [&::-webkit-details-marker]:hidden">{q}<ChevronDown size={18} className="shrink-0 text-rose transition-transform group-open:rotate-180"/></summary>
+    <p className="text-sm text-taupe leading-relaxed pb-4 -mt-1">{a}</p>
+   </details>)}
+  </div>
+ </div></section>;
 }
