@@ -148,7 +148,7 @@ async function askGemini(system,messages){
   };
   let last=0;
   for(const model of models){
-    const r=await safeFetch('Gemini',`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',headers:{'x-goog-api-key':process.env.GEMINI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(50000)});
+    const r=await safeFetch('Gemini',`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',headers:{'x-goog-api-key':process.env.GEMINI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
     const data=await r.json().catch(()=>({}));
     if(r.ok){
       const parts=data?.candidates?.[0]?.content?.parts||[];
