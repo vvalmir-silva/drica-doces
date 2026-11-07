@@ -27,9 +27,22 @@ async function dailyCap(){
 const lead=h=>{h=Number(h)||0;return h>=24&&h%24===0?`${h/24} dias`:`${h} horas`};
 const todaySP=()=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',weekday:'long',day:'2-digit',month:'long',year:'numeric'}).format(new Date());
 const isoSP=ms=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(ms));
+const norm=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+// Contagem anônima por assunto (sem texto da pergunta nem dados pessoais), para ver o que os clientes mais perguntam.
+function topicOf(q){const s=norm(q);
+  if(/entreg/.test(s))return'entrega';if(/antecedenc|prazo|quanto tempo|dias/.test(s))return'prazo';
+  if(/vaga|data|dia /.test(s))return'data';if(/kit|monte|mistur/.test(s))return'kit';
+  if(/convidad|quantos|quantidade/.test(s))return'quantidade';if(/preco|valor|custa|reais|r\$/.test(s))return'preco';
+  if(/retir|endereco/.test(s))return'retirada';if(/pix|cartao|pagamento/.test(s))return'pagamento';
+  if(/sabor|brigadeiro|beijinho|bicho/.test(s))return'sabores';return'outro'}
+async function countTopic(topic){
+  const url=process.env.UPSTASH_REDIS_REST_URL,token=process.env.UPSTASH_REDIS_REST_TOKEN;if(!url||!token)return;
+  const month=isoSP(Date.now()).slice(0,7),key=`dd:ai:topic:${month}:${topic}`;
+  await fetch(`${url.replace(/\/$/,'')}/pipeline`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify([['INCR',key],['EXPIRE',key,34128000]]),signal:AbortSignal.timeout(2000)}).catch(()=>{});
+}
 const brDate=ms=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'long'}).format(new Date(ms));
 
-function systemPrompt({flavors,unit,cento,settings,delivery,pix}){
+function systemPrompt({flavors,unit,cento,settings,delivery,pix,cart}){
   return `Você é a assistente virtual do site da Drica Doces, uma confeitaria artesanal de docinhos de festa em São Paulo. Fale em português do Brasil, com carinho e objetividade.
 
 FATOS DA LOJA (use somente estes; não invente nada além deles):
@@ -41,6 +54,7 @@ FATOS DA LOJA (use somente estes; não invente nada além deles):
 - Entrega: ${delivery?'disponível em regiões atendidas; a taxa é calculada pelo CEP no checkout. Também há retirada.':'no momento, pedidos pelo site são para retirada; entrega só consultando a Drica pelo WhatsApp.'}
 - Pagamento: cartão no recebimento${pix?'; Pix depois que a Drica confirmar o pedido':''}.
 - WhatsApp da Drica: (11) 96082-9925.
+- Carrinho atual da cliente (informado pelo site): ${cart||'vazio'}. Se ela perguntar quanto falta, calcule com base nisso (mínimo ${MIN_KIT} docinhos; pelo site, até ${MAX_KIT}).
 
 COMO RESPONDER:
 - Respostas curtas: no máximo 3 frases ou uma lista curta. Sem markdown pesado.
@@ -108,16 +122,17 @@ export default handle(async(req,res)=>{
 
   const db=serverDB();
   const [{data:products,error:pe},{data:settings,error:se},{count:zones}]=await Promise.all([
-    db.from('products').select('id,name,category,options,active').eq('active',true),
+    db.from('products').select('id,name,category,options,active,image_url').eq('active',true),
     db.from('shop_settings').select('*').eq('id',1).single(),
     db.from('delivery_zones').select('id',{count:'exact',head:true}).eq('active',true)
   ]);
   if(pe||se||!settings)reject(503,'Cardápio indisponível no momento.');
-  const flavors=(products||[]).filter(p=>p.category==='Docinhos de festa'&&p.id!=='cento-misto').map(p=>({id:p.id,name:p.name}));
+  const flavors=(products||[]).filter(p=>p.category==='Docinhos de festa'&&p.id!=='cento-misto').map(p=>({id:p.id,name:p.name,image_url:p.image_url||null}));
   const unit=(products||[]).find(p=>p.id==='cento-misto')?.options?.find(o=>o.id==='mixed-custom')?.price_cents;
   const cento=(products||[]).flatMap(p=>p.options||[]).find(o=>/(^|-)hundred$/.test(o.id)&&o.id!=='mixed-hundred')?.price_cents;
 
-  const system=systemPrompt({flavors,unit,cento,settings,delivery:(zones||0)>0,pix:pixEnabled()});
+  const cart=typeof req.body?.cart==='string'?req.body.cart.trim().slice(0,300):'';
+  const system=systemPrompt({flavors,unit,cento,settings,delivery:(zones||0)>0,pix:pixEnabled(),cart});
   const out=PROVIDER==='gemini'?await askGemini(system,messages):PROVIDER==='groq'?await askGroq(system,messages):await askAnthropic(system,messages);
   let reply=out.text;
   let kit=null;
@@ -134,7 +149,11 @@ export default handle(async(req,res)=>{
   }
   if(!reply&&call?.name==='sugerir_kit'&&Number(call.input?.total)>MAX_KIT)reply=`Para mais de ${MAX_KIT} docinhos, a Drica combina tudo pessoalmente pelo WhatsApp: (11) 96082-9925.`;
   if(!reply)reply='Desculpe, não consegui responder agora. Pode reformular ou falar com a Drica no WhatsApp?';
-  return send(res,200,{reply:reply.slice(0,1500),kit});
+  // Foto do sabor citado na resposta (ou na pergunta), quando o cadastro tem imagem.
+  const said=norm(`${reply} ${messages.at(-1).content}`);
+  const f=flavors.find(x=>x.image_url&&said.includes(norm(x.name)));
+  await countTopic(topicOf(messages.at(-1).content));
+  return send(res,200,{reply:reply.slice(0,1500),kit,photo:f?{name:f.name,url:f.image_url}:null});
 });
 
 async function askAnthropic(system,messages){

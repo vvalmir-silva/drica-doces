@@ -48,4 +48,4 @@ export async function requestPixForTrackedOrder(code,phone,cpf){if(!isLive)throw
 // Recursos opcionais ativos no servidor (Pix, assistente). Uma única consulta por visita.
 let configPromise=null;
 export const getConfig=()=>{if(!isLive)return Promise.resolve({pix:false,ai:false});configPromise??=fetch('/api/config').then(r=>r.ok?r.json():{}).catch(()=>({}));return configPromise};
-export const askAssistant=messages=>postJSON('/api/assistant',{messages});
+export const askAssistant=(messages,cart='')=>postJSON('/api/assistant',{messages,cart});

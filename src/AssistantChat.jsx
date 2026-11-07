@@ -7,18 +7,28 @@ import {useDialog} from './ui.jsx';
 const KEY='drica-assistente-v1';
 const HELLO={role:'assistant',content:'Oi! Sou a assistente virtual da Drica 💗 Posso calcular quantos docinhos você precisa, montar um kit e tirar dúvidas sobre prazos e retirada.'};
 const SUGGESTIONS=['Quantos docinhos para 30 convidados?','Monte um kit de 100 docinhos','Com quanta antecedência devo pedir?','Vocês fazem entrega?','Tenho uma data em mente, tem vaga?'];
+const CHANGES=[['Trocar um sabor','Troque um dos sabores do kit, por favor.'],['Aumentar o kit','Aumente o kit em 50 docinhos.'],['Diminuir o kit','Diminua o kit em 50 docinhos.']];
 // Link do WhatsApp já com a última pergunta da pessoa, para a Drica entender o contexto.
 const waLink=(list,i)=>{const q=[...list.slice(0,i)].reverse().find(x=>x.role==='user')?.content||'';return `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(`Olá, Drica! Vim pelo site. ${q}`.trim())}`};
+const cartText=cart=>(cart||[]).map(c=>`${c.qty}× ${c.mix_label?`kit (${c.mix_label})`:(c.option_label||c.name||c.option_id)}`).join('; ');
 const load=()=>{try{const v=JSON.parse(sessionStorage.getItem(KEY)||'null');return Array.isArray(v)&&v.length?v:[HELLO]}catch{return[HELLO]}};
 
+// Efeito de digitação: a resposta aparece aos poucos (só nas respostas novas).
+function Typed({text}){
+  const [n,setN]=useState(0);
+  const step=Math.max(2,Math.ceil(text.length/150));
+  useEffect(()=>{if(n>=text.length)return;const t=setTimeout(()=>setN(n+step),20);return()=>clearTimeout(t)},[n,text,step]);
+  return <>{text.slice(0,n)}</>;
+}
+
 /** Chat da assistente de encomendas (carregado só quando aberto). */
-export default function AssistantChat({onClose,onAddKit}){
+export default function AssistantChat({onClose,onAddKit,cart}){
   const [msgs,setMsgs]=useState(load);
   const [text,setText]=useState('');
   const [busy,setBusy]=useState(false);
   const ref=useRef(null),listRef=useRef(null),inputRef=useRef(null);
   useDialog(ref,true,onClose);
-  useEffect(()=>{try{sessionStorage.setItem(KEY,JSON.stringify(msgs.slice(-20)))}catch{}listRef.current?.scrollTo({top:listRef.current.scrollHeight,behavior:'smooth'})},[msgs,busy]);
+  useEffect(()=>{try{sessionStorage.setItem(KEY,JSON.stringify(msgs.slice(-20).map(({fresh,...r})=>r)))}catch{}listRef.current?.scrollTo({top:listRef.current.scrollHeight,behavior:'smooth'})},[msgs,busy]);
 
   async function ask(q){
     const question=String(q||'').trim().slice(0,500);if(!question||busy)return;
@@ -27,7 +37,7 @@ export default function AssistantChat({onClose,onAddKit}){
     // A API recebe só o texto da conversa (sem a saudação inicial), começando por uma pergunta.
     const history=next.filter(m=>m.content&&m.content!==HELLO.content&&!m.error).map(({role,content})=>({role,content})).slice(-14);
     while(history.length&&history[0].role!=='user')history.shift();
-    try{const {reply,kit}=await askAssistant(history);setMsgs(m=>[...m,{role:'assistant',content:reply,kit:kit||null}])}
+    try{const {reply,kit,photo}=await askAssistant(history,cartText(cart));setMsgs(m=>[...m,{role:'assistant',content:reply,kit:kit||null,photo:photo||null,fresh:true}])}
     catch(err){setMsgs(m=>[...m,{role:'assistant',content:err.message||'Não consegui responder agora.',error:true}])}
     finally{setBusy(false);setTimeout(()=>inputRef.current?.focus({preventScroll:true}),50)}
   }
@@ -45,7 +55,8 @@ export default function AssistantChat({onClose,onAddKit}){
       <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3" aria-live="polite">
         {msgs.map((m,i)=><div key={i} className={`flex ${m.role==='user'?'justify-end':'justify-start'}`}>
           <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed whitespace-pre-line ${m.role==='user'?'bg-cocoa text-white rounded-br-md':m.error?'bg-[#fff1ef] text-[#8e382f] rounded-bl-md':'bg-white border border-[#efe0da] text-cocoa rounded-bl-md'}`}>
-            {m.content}
+            {m.fresh?<Typed text={m.content||''}/>:m.content}
+            {m.photo&&<figure className="mt-3"><img src={m.photo.url} alt={`Docinho de ${m.photo.name}`} loading="lazy" width="400" height="300" className="w-full max-h-44 object-cover rounded-xl"/><figcaption className="text-xs text-taupe mt-1">{m.photo.name}</figcaption></figure>}
             {m.kit&&<div className="mt-3 rounded-xl bg-[#fbf3f0] border border-[#efdcd6] p-3">
               <p className="text-xs font-bold uppercase tracking-[.12em] text-roseink">Kit sugerido</p>
               <p className="font-semibold mt-1">{m.kit.total.toLocaleString('pt-BR')} docinhos</p>
@@ -56,6 +67,7 @@ export default function AssistantChat({onClose,onAddKit}){
             {m.role!=='user'&&/whatsapp/i.test(m.content||'')&&<a href={waLink(msgs,i)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-[#1f7a4d] min-h-9"><MessageCircle size={14}/> Combinar pelo WhatsApp</a>}
           </div>
         </div>)}
+        {msgs.at(-1)?.kit&&!busy&&<div className="flex flex-wrap gap-2">{CHANGES.map(([label,q])=><button type="button" key={label} className="chip !min-h-10 !py-2" onClick={()=>ask(q)}>{label}</button>)}</div>}
         {busy&&<div className="flex justify-start"><div className="bg-white border border-[#efe0da] rounded-2xl rounded-bl-md px-4 py-3" aria-label="Consultando"><div className="flex gap-1">{[0,1,2].map(i=><span key={i} className="h-2 w-2 rounded-full bg-rose/60 animate-bounce" style={{animationDelay:`${i*120}ms`}}/>)}</div><p className="text-xs text-taupe mt-1.5">Consultando os sabores e a agenda…</p></div></div>}
         {msgs.length<=1&&!busy&&<div className="flex flex-wrap gap-2 pt-1">{SUGGESTIONS.map(s=><button type="button" key={s} className="chip !min-h-10 !py-2 text-left" onClick={()=>ask(s)}>{s}</button>)}</div>}
       </div>
