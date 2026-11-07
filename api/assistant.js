@@ -62,9 +62,12 @@ export default handle(async(req,res)=>{
   await rateLimit(req,'ai',25,3600);
   const raw=req.body?.messages;
   if(!Array.isArray(raw)||!raw.length||raw.length>MAX_TURNS)reject(400,'Conversa inválida.');
-  const messages=raw.map(m=>({role:m?.role,content:typeof m?.content==='string'?m.content.trim().slice(0,MAX_CHARS):''}));
-  if(messages.some(m=>!['user','assistant'].includes(m.role)||!m.content)||messages[0].role!=='user'||messages.at(-1).role!=='user')reject(400,'Conversa inválida.');
-  for(let i=1;i<messages.length;i++)if(messages[i].role===messages[i-1].role)reject(400,'Conversa inválida.');
+  const parsed=raw.map(m=>({role:m?.role,content:typeof m?.content==='string'?m.content.trim().slice(0,MAX_CHARS):''}));
+  if(parsed.some(m=>!['user','assistant'].includes(m.role)||!m.content))reject(400,'Conversa inválida.');
+  // Perguntas seguidas (ex.: a anterior falhou e foi reenviada) viram uma só: vale a última.
+  const messages=[];
+  for(const m of parsed){if(messages.length&&messages.at(-1).role===m.role)messages[messages.length-1]=m;else messages.push(m)}
+  if(messages[0].role!=='user'||messages.at(-1).role!=='user')reject(400,'Conversa inválida.');
   await dailyCap();
 
   const db=serverDB();
