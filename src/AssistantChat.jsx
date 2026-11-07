@@ -6,7 +6,9 @@ import {useDialog} from './ui.jsx';
 
 const KEY='drica-assistente-v1';
 const HELLO={role:'assistant',content:'Oi! Sou a assistente virtual da Drica 💗 Posso calcular quantos docinhos você precisa, montar um kit e tirar dúvidas sobre prazos e retirada.'};
-const SUGGESTIONS=['Quantos docinhos para 30 convidados?','Monte um kit de 100 docinhos','Com quanta antecedência devo pedir?','Vocês fazem entrega?'];
+const SUGGESTIONS=['Quantos docinhos para 30 convidados?','Monte um kit de 100 docinhos','Com quanta antecedência devo pedir?','Vocês fazem entrega?','Tenho uma data em mente, tem vaga?'];
+// Link do WhatsApp já com a última pergunta da pessoa, para a Drica entender o contexto.
+const waLink=(list,i)=>{const q=[...list.slice(0,i)].reverse().find(x=>x.role==='user')?.content||'';return `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(`Olá, Drica! Vim pelo site. ${q}`.trim())}`};
 const load=()=>{try{const v=JSON.parse(sessionStorage.getItem(KEY)||'null');return Array.isArray(v)&&v.length?v:[HELLO]}catch{return[HELLO]}};
 
 /** Chat da assistente de encomendas (carregado só quando aberto). */
@@ -51,9 +53,10 @@ export default function AssistantChat({onClose,onAddKit}){
               <p className="font-display text-xl mt-2 tabular-nums">{money(m.kit.price_cents)}</p>
               <button type="button" className="btn-dark w-full !min-h-11 mt-2 text-xs" onClick={()=>onAddKit(m.kit)}><ShoppingBag size={15}/> Adicionar ao carrinho</button>
             </div>}
+            {m.role!=='user'&&/whatsapp/i.test(m.content||'')&&<a href={waLink(msgs,i)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-[#1f7a4d] min-h-9"><MessageCircle size={14}/> Combinar pelo WhatsApp</a>}
           </div>
         </div>)}
-        {busy&&<div className="flex justify-start"><div className="bg-white border border-[#efe0da] rounded-2xl rounded-bl-md px-4 py-3 flex gap-1" aria-label="Digitando">{[0,1,2].map(i=><span key={i} className="h-2 w-2 rounded-full bg-rose/60 animate-bounce" style={{animationDelay:`${i*120}ms`}}/>)}</div></div>}
+        {busy&&<div className="flex justify-start"><div className="bg-white border border-[#efe0da] rounded-2xl rounded-bl-md px-4 py-3" aria-label="Consultando"><div className="flex gap-1">{[0,1,2].map(i=><span key={i} className="h-2 w-2 rounded-full bg-rose/60 animate-bounce" style={{animationDelay:`${i*120}ms`}}/>)}</div><p className="text-xs text-taupe mt-1.5">Consultando os sabores e a agenda…</p></div></div>}
         {msgs.length<=1&&!busy&&<div className="flex flex-wrap gap-2 pt-1">{SUGGESTIONS.map(s=><button type="button" key={s} className="chip !min-h-10 !py-2 text-left" onClick={()=>ask(s)}>{s}</button>)}</div>}
       </div>
       <div className="border-t border-[#efe0da] bg-white px-3 pt-3 pb-[max(.75rem,env(safe-area-inset-bottom))]">
