@@ -5,7 +5,7 @@ let clientPromise=null;
 export const getSupabase=()=>{if(!isLive)return Promise.resolve(null);clientPromise??=import('@supabase/supabase-js').then(({createClient})=>createClient(import.meta.env.VITE_SUPABASE_URL,import.meta.env.VITE_SUPABASE_ANON_KEY));return clientPromise};
 // Leitura pública do cardápio direto pela API REST (respeita as mesmas regras de acesso/RLS).
 const REST=String(import.meta.env.VITE_SUPABASE_URL||'').replace(/\/$/,'')+'/rest/v1/';
-async function restGet(path,{single=false}={}){const key=import.meta.env.VITE_SUPABASE_ANON_KEY;const r=await fetch(REST+path,{headers:{apikey:key,Authorization:'Bearer '+key,Accept:single?'application/vnd.pgrst.object+json':'application/json'}});const data=await r.json().catch(()=>null);if(!r.ok)return{data:null,error:new Error(data?.message||'Serviço indisponível.')};return{data,error:null}}
+async function restGet(path,{single=false}={}){const key=import.meta.env.VITE_SUPABASE_ANON_KEY;const r=await fetch(REST+path,{headers:{apikey:key,...(String(key).startsWith('eyJ')?{Authorization:'Bearer '+key}:{}),Accept:single?'application/vnd.pgrst.object+json':'application/json'}});const data=await r.json().catch(()=>null);if(!r.ok)return{data:null,error:new Error(data?.message||'Serviço indisponível.')};return{data,error:null}}
 const KEY='drica_pro_demo_v2';
 export const getDemo=()=>{try{return JSON.parse(localStorage.getItem(KEY))||{}}catch{return {}}};
 export const saveDemo=patch=>{const value={...getDemo(),...patch};localStorage.setItem(KEY,JSON.stringify(value));return value};
