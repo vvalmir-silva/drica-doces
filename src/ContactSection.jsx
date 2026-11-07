@@ -1,15 +1,15 @@
 import React from 'react';
 import {ChevronDown,MessageCircle} from 'lucide-react';
-import {WHATSAPP,money} from './data.js';
+import {WHATSAPP,money,leadTime} from './data.js';
 
 /** Dúvidas frequentes + atalho para o WhatsApp (substitui o formulário longo). */
 export default function ContactSection({settings={},products=[],deliveryOn=false}){
  const unit=products.find(p=>p.id==='cento-misto')?.options?.find(o=>o.id==='mixed-custom')?.price_cents;
  const cento=products.flatMap(p=>p.options||[]).find(o=>/(^|-)hundred$/.test(o.id))?.price_cents;
- const hours=Number(settings.min_hours??24);
+ const hours=Number(settings.min_hours??240);
  const faq=[
   ['Qual é o pedido mínimo?',`Os kits personalizados começam em 50 docinhos e você escolhe os sabores${unit?` (${money(unit)} por docinho)`:''}. Os sabores avulsos são vendidos por cento${cento?` (${money(cento)})`:''}.`],
-  ['Com quanta antecedência devo encomendar?',`Pelo menos ${hours} horas antes. Para festas grandes ou datas concorridas, quanto antes melhor — a Drica confirma a disponibilidade pelo WhatsApp.`],
+  ['Com quanta antecedência devo encomendar?',`Com pelo menos ${leadTime(hours)} de antecedência. Para festas grandes ou datas concorridas, quanto antes melhor — a Drica confirma a disponibilidade pelo WhatsApp.`],
   ['Vocês fazem entrega?',deliveryOn?'Sim, nas regiões atendidas. A taxa é calculada pelo CEP no momento do pedido; também é possível retirar.':'No momento os pedidos pelo site são para retirada. Para entrega, consulte a Drica pelo WhatsApp.'],
   ['E se eu precisar de mais de 500 docinhos?','Pedidos acima de 500 docinhos são combinados direto com a Drica pelo WhatsApp, para garantir data, horário e produção.'],
   ['Como acompanho meu pedido?','Toque em “Acompanhar pedido” (no menu ou no rodapé) e informe o código recebido e o WhatsApp usado na encomenda.'],

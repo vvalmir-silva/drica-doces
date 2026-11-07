@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Copy, CreditCard, Gift, MapPin, MessageCircle, Minus, Plus, ShoppingBag, Store, Trash2, Truck, Wallet} from 'lucide-react';
-import {WHATSAPP, DEMO_COUPONS, dateBR, digits, localToday, money, prepareWhatsApp, itemPieces} from './data.js';
+import {WHATSAPP, DEMO_COUPONS, dateBR, digits, localToday, money, prepareWhatsApp, itemPieces, leadTime} from './data.js';
 import {createOrder, getDemo, isLive, payPix, checkAvailability} from './api.js';
 import SlotPicker from './SlotPicker.jsx';
 import {maskPhone} from './ui.jsx';
@@ -107,7 +107,7 @@ export default function GuidedCheckout({cart,products,settings,zones,blocked,onF
     if(isBlocked||availability?.blocked)return 'Esta data está indisponível na agenda.';
     if(availability&&pieceCount>availability.available)return 'A quantidade ultrapassa a capacidade disponível nesta data. Escolha outro dia.';
     const parsed=Date.parse(asClock(form.scheduled_at));
-    if(!Number.isFinite(parsed)||parsed<Date.now()+Number(settings.min_hours||0)*3600000)return `A encomenda exige pelo menos ${settings.min_hours||0} horas de antecedência.`;
+    if(!Number.isFinite(parsed)||parsed<Date.now()+Number(settings.min_hours||0)*3600000)return `A encomenda exige pelo menos ${leadTime(settings.min_hours)} de antecedência.`;
     if(scheduledHour<(settings.open_time||'00:00')||scheduledHour>(settings.close_time||'23:59'))return `Escolha um horário entre ${settings.open_time} e ${settings.close_time}.`;
     if(form.fulfillment==='Entrega'){
       if(digits(form.cep).length!==8 || !form.street.trim() || !form.number.trim() || !form.neighborhood.trim() || !form.city.trim() || !/^[A-Z]{2}$/.test(form.state.toUpperCase().trim()))return 'Preencha CEP, rua, número, bairro, cidade e UF.';
@@ -188,7 +188,7 @@ export default function GuidedCheckout({cart,products,settings,zones,blocked,onF
                 <Field title="E-mail (opcional, exceto Pix)"><input className="field" type="email" inputMode="email" autoComplete="email" value={form.email} onChange={e=>set('email',e.target.value)} placeholder="voce@email.com"/></Field>
               </div>
               <SlotPicker value={form.scheduled_at} onChange={v=>set('scheduled_at',v)} settings={settings} blocked={blocked}/>
-              <p className="text-xs text-taupe">Pedidos com {settings.min_hours||0}h de antecedência · a Drica confirma a disponibilidade pelo WhatsApp.</p>
+              <p className="text-xs text-taupe">Pedidos com {leadTime(settings.min_hours)} de antecedência · a Drica confirma a disponibilidade pelo WhatsApp.</p>
               {scheduledDate&&<div role="status" className={`rounded-xl p-3 text-xs ${availability&&(!availability.can_book||availability.blocked)?'bg-[#fff1ef] text-[#8e382f]':'bg-[#eaf4eb] text-[#285c41]'}`}>{availabilityBusy?'Consultando capacidade de produção...':availability?availability.blocked?'Data bloqueada na agenda.':`Capacidade nesta data: ${availability.available.toLocaleString('pt-BR')} docinhos livres de ${availability.capacity.toLocaleString('pt-BR')}. ${availability.can_book?'Quantidade permitida; aguarde a confirmação da Drica.':'Escolha outro dia ou reduza a quantidade.'}`:'A disponibilidade será validada quando o pedido for registrado.'}</div>}
               {deliveryOn?<div className="grid grid-cols-2 gap-2 sm:gap-3"><button type="button" onClick={()=>set('fulfillment','Retirada')} aria-pressed={form.fulfillment==='Retirada'} className={`min-h-14 flex justify-center items-center gap-2 rounded-xl border text-xs sm:text-sm font-bold ${form.fulfillment==='Retirada'?'bg-blush border-rose':'bg-white border-[#ebd9d2]'}`}><Store size={18}/> Retirada</button><button type="button" onClick={()=>set('fulfillment','Entrega')} aria-pressed={form.fulfillment==='Entrega'} className={`min-h-14 flex justify-center items-center gap-2 rounded-xl border text-xs sm:text-sm font-bold ${form.fulfillment==='Entrega'?'bg-blush border-rose':'bg-white border-[#ebd9d2]'}`}><Truck size={18}/> Entrega</button></div>:<div className="rounded-xl border border-[#ebd9d2] bg-[#fffaf8] p-3 text-sm flex gap-3 items-start"><Store size={18} className="text-rose shrink-0 mt-0.5"/><div><p className="font-bold">Retirada com a Drica</p><p className="text-xs text-taupe mt-1">Precisa de entrega? <a className="underline font-bold text-roseink" href={`https://wa.me/${WHATSAPP}?text=${encodeURIComponent('Olá, Drica! Vocês entregam no meu endereço? Meu CEP é: ')}`} target="_blank" rel="noopener noreferrer">Consulte pelo WhatsApp</a>.</p></div></div>}
               {deliveryOn&&form.fulfillment==='Entrega'&&<div className="bg-[#fff7f3] border border-[#f0e3dc] p-3 sm:p-4 rounded-2xl space-y-3">

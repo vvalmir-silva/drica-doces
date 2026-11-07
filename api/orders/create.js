@@ -16,7 +16,7 @@ export default handle(async(req,res)=>{
  if(b.payment_method==='Pix'&&!(process.env.MERCADOPAGO_ACCESS_TOKEN&&String(process.env.PUBLIC_SITE_URL||'').startsWith('https://')))reject(400,'Pix ainda não está disponível. Escolha cartão no recebimento.');if(b.payment_method==='Pix'&&!emailValid(mail))reject(400,'Informe e-mail para solicitar um Pix.');
  const minNow=Date.now(),chosen=Date.parse(`${date}:00-03:00`);
  const {data:settings,error:serr}=await db.from('shop_settings').select('*').eq('id',1).single();if(serr||!settings)reject(503,'Configuração da loja indisponível.');
- if(chosen<minNow+settings.min_hours*3600000)reject(400,`Antecedência mínima de ${settings.min_hours} horas.`);
+ if(chosen<minNow+settings.min_hours*3600000){const h=Number(settings.min_hours)||0;reject(400,`Antecedência mínima de ${h>=24&&h%24===0?`${h/24} dias`:`${h} horas`}.`)}
  if(date.slice(11)<settings.open_time||date.slice(11)>settings.close_time)reject(400,'Horário fora do atendimento.');
  const {data:blocks,error:berr}=await db.from('blocked_dates').select('date').eq('date',date.slice(0,10));if(berr)reject(503,'Falha ao consultar agenda.');if(blocks?.length)reject(400,'Este dia não aceita encomendas.');
  const raw=b.items;if(!Array.isArray(raw)||!raw.length||raw.length>30)reject(400,'Carrinho vazio ou inválido.');

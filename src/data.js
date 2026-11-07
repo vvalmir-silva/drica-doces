@@ -7,7 +7,7 @@ export const demoProducts=[
  {id:'bicho-de-pe',name:'Bicho de Pé',category:'Docinhos de festa',description:'Bicho de pé macio e delicado, com visual rosado encantador, perfeito para deixar a mesa de doces ainda mais alegre.',image_url:'/bicho-de-pe.jpg',tag:'Cento por R$ 150,00',active:true,options:[{id:'bicho-de-pe-hundred',label:'Cento (100 docinhos)',price_cents:15000}]},
  {id:'cento-misto',name:'Cento Personalizado',category:'Docinhos de festa',description:'Monte seu cento do jeito que preferir, combinando brigadeiro, beijinho e bicho de pé na quantidade ideal para a sua festa.',image_url:'/docinhos-festa.jpg',tag:'Monte do seu jeito',active:true,hidden_from_grid:true,options:[{id:'mixed-half',label:'Meio cento personalizado (50 docinhos)',price_cents:7500},{id:'mixed-hundred',label:'Cento personalizado (100 docinhos)',price_cents:15000},{id:'mixed-custom',label:'Docinhos personalizados (por unidade)',price_cents:150}]}
 ];
-export const demoSettings={min_hours:24,max_orders_per_slot:5,daily_capacity_sweets:1000,deposit_percent:0,open_time:'09:00',close_time:'18:00',gift_wrap_cents:300,allow_delivery_without_zone:true,instagram_url:'',business_hours:'Atendimento por encomenda',delivery_notice:'Entregas e taxas a confirmar',loyalty_threshold:5,loyalty_percent:10};
+export const demoSettings={min_hours:240,max_orders_per_slot:5,daily_capacity_sweets:1000,deposit_percent:0,open_time:'09:00',close_time:'18:00',gift_wrap_cents:300,allow_delivery_without_zone:true,instagram_url:'',business_hours:'Atendimento por encomenda',delivery_notice:'Entregas e taxas a confirmar',loyalty_threshold:5,loyalty_percent:10};
 export const DEMO_COUPONS=[{code:'DRICA10',percent_off:10,min_cents:4000,max_uses:100,used_count:0,active:true}];
 export const statusLabels={solicitado:'Solicitado',confirmado:'Confirmado',preparando:'Em preparo',pronto:'Pronto para retirada/entrega',entregue:'Entregue',cancelado:'Cancelado'};
 export const statusOptions=Object.keys(statusLabels);
@@ -20,3 +20,6 @@ export function prepareWhatsApp(order){const lines=(order.items||[]).map(x=>`•
 // Opção pode declarar "sweets" no JSON; sem isso: *-hundred=100, *-half=50, demais=1.
 export function piecesPerUnit(optionId,sweets){const n=Number(sweets);if(Number.isSafeInteger(n)&&n>0)return n;const id=String(optionId||'');if(id==='mixed-custom')return 1;if(/(^|-)half$/.test(id))return 50;if(/(^|-)hundred$/.test(id))return 100;return 1}
 export const itemPieces=item=>piecesPerUnit(item?.option_id,item?.sweets_per_unit??item?.sweets)*(Number(item?.qty)||0);
+
+// Antecedência em texto: múltiplos de 24h viram dias (240 → "10 dias").
+export function leadTime(hours){const h=Number(hours)||0;if(h>=24&&h%24===0){const d=h/24;return `${d} ${d===1?'dia':'dias'}`}return `${h} ${h===1?'hora':'horas'}`}
