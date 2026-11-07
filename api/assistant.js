@@ -2,12 +2,14 @@ import {handle,method,originCheck,serverDB,rateLimit,reject,send,money} from './
 import {pixEnabled} from './config.js';
 
 // Assistente de encomendas: responde com os dados reais da loja e pode sugerir um kit.
-// A chave da Anthropic fica só no servidor (ANTHROPIC_API_KEY). Nada da conversa é gravado.
-const MODEL=process.env.AI_MODEL||'claude-haiku-5-5';
+// Provedor: Groq (plano gratuito, GROQ_API_KEY) ou Anthropic (ANTHROPIC_API_KEY). Chaves só no servidor.
+// Nada da conversa é gravado pela loja.
+const PROVIDER=process.env.GROQ_API_KEY?'groq':process.env.ANTHROPIC_API_KEY?'anthropic':null;
+export const aiEnabled=()=>Boolean(process.env.GROQ_API_KEY||process.env.ANTHROPIC_API_KEY);
 const MAX_TURNS=16,MAX_CHARS=800,MIN_KIT=50,MAX_KIT=500;
 
 async function dailyCap(){
-  const limit=Number(process.env.AI_DAILY_LIMIT||300);
+  const limit=Number(process.env.AI_DAILY_LIMIT||(PROVIDER==='groq'?100:300));
   const url=process.env.UPSTASH_REDIS_REST_URL,token=process.env.UPSTASH_REDIS_REST_TOKEN;
   if(!url||!token)reject(503,'Assistente indisponível no momento.');
   const day=new Date(Date.now()-3*3600000).toISOString().slice(0,10);
@@ -56,7 +58,7 @@ const TOOLS=[{
 
 export default handle(async(req,res)=>{
   method(req);originCheck(req);
-  if(!process.env.ANTHROPIC_API_KEY)reject(503,'Assistente ainda não ativado.');
+  if(!PROVIDER)reject(503,'Assistente ainda não ativado.');
   await rateLimit(req,'ai',25,3600);
   const raw=req.body?.messages;
   if(!Array.isArray(raw)||!raw.length||raw.length>MAX_TURNS)reject(400,'Conversa inválida.');
@@ -76,16 +78,11 @@ export default handle(async(req,res)=>{
   const unit=(products||[]).find(p=>p.id==='cento-misto')?.options?.find(o=>o.id==='mixed-custom')?.price_cents;
   const cento=(products||[]).flatMap(p=>p.options||[]).find(o=>/(^|-)hundred$/.test(o.id)&&o.id!=='mixed-hundred')?.price_cents;
 
-  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':process.env.ANTHROPIC_API_KEY,'anthropic-version':'2023-06-01','content-type':'application/json'},
-    body:JSON.stringify({model:MODEL,max_tokens:1024,output_config:{effort:'low'},system:systemPrompt({flavors,unit,cento,settings,delivery:(zones||0)>0,pix:pixEnabled()}),tools:TOOLS,messages}),
-    signal:AbortSignal.timeout(25000)});
-  const data=await r.json().catch(()=>({}));
-  if(!r.ok){console.error('Anthropic',r.status,data?.error?.type||'');reject(502,'O assistente não respondeu agora. Tente de novo ou fale com a Drica no WhatsApp.')}
-
-  const blocks=Array.isArray(data.content)?data.content:[];
-  let reply=blocks.filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+  const system=systemPrompt({flavors,unit,cento,settings,delivery:(zones||0)>0,pix:pixEnabled()});
+  const out=PROVIDER==='groq'?await askGroq(system,messages):await askAnthropic(system,messages);
+  let reply=out.text;
   let kit=null;
-  const call=blocks.find(b=>b.type==='tool_use'&&b.name==='sugerir_kit');
+  const call=out.call;
   if(call&&unit){
     const total=Number(call.input?.total);const mix={};let sum=0;
     for(const [id,q] of Object.entries(call.input?.sabores||{})){const n=Number(q);if(!Number.isInteger(n)||n<0)continue;if(n===0)continue;if(!flavors.some(f=>f.id===id)){sum=-1;break}mix[id]=n;sum+=n}
@@ -98,3 +95,36 @@ export default handle(async(req,res)=>{
   if(!reply)reply='Desculpe, não consegui responder agora. Pode reformular ou falar com a Drica no WhatsApp?';
   return send(res,200,{reply:reply.slice(0,1500),kit});
 });
+
+async function askAnthropic(system,messages){
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':process.env.ANTHROPIC_API_KEY,'anthropic-version':'2023-06-01','content-type':'application/json'},
+    body:JSON.stringify({model:process.env.AI_MODEL||'claude-haiku-5-5',max_tokens:1024,output_config:{effort:'low'},system,tools:TOOLS,messages}),signal:AbortSignal.timeout(25000)});
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok){console.error('Anthropic',r.status,data?.error?.type||'');reject(502,'O assistente não respondeu agora. Tente de novo ou fale com a Drica no WhatsApp.')}
+  const blocks=Array.isArray(data.content)?data.content:[];
+  const tool=blocks.find(b=>b.type==='tool_use'&&b.name==='sugerir_kit');
+  return {text:blocks.filter(b=>b.type==='text').map(b=>b.text).join('\n').trim(),call:tool?{input:tool.input}:null};
+}
+
+// Groq: API compatível com OpenAI. Se o modelo principal estourar o limite gratuito, tenta o menor.
+async function askGroq(system,messages){
+  const models=[process.env.AI_MODEL||'openai/gpt-oss-120b','openai/gpt-oss-20b'].filter((m,i,a)=>a.indexOf(m)===i);
+  const tools=TOOLS.map(t=>({type:'function',function:{name:t.name,description:t.description,parameters:t.input_schema}}));
+  let last=0;
+  for(const model of models){
+    const body={model,messages:[{role:'system',content:system},...messages],tools,tool_choice:'auto',max_completion_tokens:900,temperature:0.4};
+    if(model.startsWith('openai/gpt-oss'))body.reasoning_effort='low';
+    const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{Authorization:`Bearer ${process.env.GROQ_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(25000)});
+    const data=await r.json().catch(()=>({}));
+    if(r.ok){
+      const msg=data?.choices?.[0]?.message||{};
+      const tc=(msg.tool_calls||[]).find(c=>c?.function?.name==='sugerir_kit');
+      let input=null;if(tc){try{input=JSON.parse(tc.function.arguments||'{}')}catch{input=null}}
+      return {text:String(msg.content||'').trim(),call:input?{input}:null};
+    }
+    last=r.status;console.error('Groq',model,r.status,data?.error?.code||data?.error?.type||'');
+    if(![429,404,400,503].includes(r.status))break;
+  }
+  if(last===429)reject(429,'O assistente está muito procurado agora. Tente em alguns minutos ou fale com a Drica no WhatsApp.');
+  reject(502,'O assistente não respondeu agora. Tente de novo ou fale com a Drica no WhatsApp.');
+}
