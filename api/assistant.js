@@ -8,13 +8,17 @@ import {pixEnabled} from './config.js';
 const PROVIDER=process.env.GEMINI_API_KEY?'gemini':process.env.GROQ_API_KEY?'groq':process.env.ANTHROPIC_API_KEY?'anthropic':null;
 const MAX_TURNS=16,MAX_CHARS=800,MIN_KIT=50,MAX_KIT=500;
 
+const BUSY='O assistente não respondeu agora. Tente de novo ou fale com a Drica no WhatsApp.';
+// Chamadas externas: se falharem (tempo esgotado, rede), registra qual etapa e responde mensagem clara.
+async function safeFetch(label,url,init){try{return await fetch(url,init)}catch(e){console.error(label,e?.name||'',e?.message||'');reject(502,BUSY)}}
+
 async function dailyCap(){
   const limit=Number(process.env.AI_DAILY_LIMIT||(PROVIDER==='anthropic'?300:100));
   const url=process.env.UPSTASH_REDIS_REST_URL,token=process.env.UPSTASH_REDIS_REST_TOKEN;
   if(!url||!token)reject(503,'Assistente indisponível no momento.');
   const day=new Date(Date.now()-3*3600000).toISOString().slice(0,10);
   const key=`dd:ai:day:${day}`;
-  const r=await fetch(`${url.replace(/\/$/,'')}/pipeline`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify([['INCR',key],['EXPIRE',key,172800]]),signal:AbortSignal.timeout(5000)});
+  const r=await safeFetch('Upstash',`${url.replace(/\/$/,'')}/pipeline`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify([['INCR',key],['EXPIRE',key,172800]]),signal:AbortSignal.timeout(5000)});
   const n=Number((await r.json().catch(()=>null))?.[0]?.result);
   if(!r.ok||!Number.isFinite(n))reject(503,'Assistente indisponível no momento.');
   if(n>limit)reject(429,'O assistente atingiu o limite de hoje. Fale com a Drica pelo WhatsApp.');
@@ -144,7 +148,7 @@ async function askGemini(system,messages){
   };
   let last=0;
   for(const model of models){
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',headers:{'x-goog-api-key':process.env.GEMINI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(25000)});
+    const r=await safeFetch('Gemini',`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',headers:{'x-goog-api-key':process.env.GEMINI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(25000)});
     const data=await r.json().catch(()=>({}));
     if(r.ok){
       const parts=data?.candidates?.[0]?.content?.parts||[];
