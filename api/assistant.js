@@ -2,14 +2,14 @@ import {handle,method,originCheck,serverDB,rateLimit,reject,send,money} from './
 import {pixEnabled} from './config.js';
 
 // Assistente de encomendas: responde com os dados reais da loja e pode sugerir um kit.
-// Provedor: Groq (plano gratuito, GROQ_API_KEY) ou Anthropic (ANTHROPIC_API_KEY). Chaves só no servidor.
+// Provedor (o primeiro configurado): Gemini (GEMINI_API_KEY, plano gratuito do Google AI Studio),
+// Groq (GROQ_API_KEY) ou Anthropic (ANTHROPIC_API_KEY). Chaves só no servidor.
 // Nada da conversa é gravado pela loja.
-const PROVIDER=process.env.GROQ_API_KEY?'groq':process.env.ANTHROPIC_API_KEY?'anthropic':null;
-export const aiEnabled=()=>Boolean(process.env.GROQ_API_KEY||process.env.ANTHROPIC_API_KEY);
+const PROVIDER=process.env.GEMINI_API_KEY?'gemini':process.env.GROQ_API_KEY?'groq':process.env.ANTHROPIC_API_KEY?'anthropic':null;
 const MAX_TURNS=16,MAX_CHARS=800,MIN_KIT=50,MAX_KIT=500;
 
 async function dailyCap(){
-  const limit=Number(process.env.AI_DAILY_LIMIT||(PROVIDER==='groq'?100:300));
+  const limit=Number(process.env.AI_DAILY_LIMIT||(PROVIDER==='anthropic'?300:100));
   const url=process.env.UPSTASH_REDIS_REST_URL,token=process.env.UPSTASH_REDIS_REST_TOKEN;
   if(!url||!token)reject(503,'Assistente indisponível no momento.');
   const day=new Date(Date.now()-3*3600000).toISOString().slice(0,10);
@@ -52,7 +52,7 @@ const TOOLS=[{
   description:'Mostra ao cliente um kit de docinhos pronto para adicionar ao carrinho. Use quando o cliente pedir para montar um kit ou aceitar uma sugestão de quantidade.',
   input_schema:{type:'object',properties:{
     total:{type:'integer',description:`Total de docinhos, entre ${MIN_KIT} e ${MAX_KIT}.`},
-    sabores:{type:'object',description:'Quantidade por id de sabor; a soma deve ser igual ao total.',additionalProperties:{type:'integer'}}
+    sabores:{type:'array',description:'Divisão por sabor; a soma das quantidades deve ser igual ao total.',items:{type:'object',properties:{sabor:{type:'string',description:'id do sabor'},quantidade:{type:'integer'}},required:['sabor','quantidade']}}
   },required:['total','sabores']}
 }];
 
@@ -79,13 +79,14 @@ export default handle(async(req,res)=>{
   const cento=(products||[]).flatMap(p=>p.options||[]).find(o=>/(^|-)hundred$/.test(o.id)&&o.id!=='mixed-hundred')?.price_cents;
 
   const system=systemPrompt({flavors,unit,cento,settings,delivery:(zones||0)>0,pix:pixEnabled()});
-  const out=PROVIDER==='groq'?await askGroq(system,messages):await askAnthropic(system,messages);
+  const out=PROVIDER==='gemini'?await askGemini(system,messages):PROVIDER==='groq'?await askGroq(system,messages):await askAnthropic(system,messages);
   let reply=out.text;
   let kit=null;
   const call=out.call;
   if(call&&unit){
     const total=Number(call.input?.total);const mix={};let sum=0;
-    for(const [id,q] of Object.entries(call.input?.sabores||{})){const n=Number(q);if(!Number.isInteger(n)||n<0)continue;if(n===0)continue;if(!flavors.some(f=>f.id===id)){sum=-1;break}mix[id]=n;sum+=n}
+    const pairs=Array.isArray(call.input?.sabores)?call.input.sabores.map(x=>[x?.sabor,x?.quantidade]):Object.entries(call.input?.sabores||{});
+    for(const [id,q] of pairs){const n=Number(q);if(!Number.isInteger(n)||n<0)continue;if(n===0)continue;if(!flavors.some(f=>f.id===id)){sum=-1;break}mix[id]=n;sum+=n}
     if(Number.isInteger(total)&&total>=MIN_KIT&&total<=MAX_KIT&&sum===total){
       kit={total,mix,label:flavors.filter(f=>mix[f.id]).map(f=>`${mix[f.id]} ${f.name}`).join(' + '),price_cents:total*unit};
       if(!reply)reply='Montei esta sugestão para você:';
@@ -124,6 +125,31 @@ async function askGroq(system,messages){
     }
     last=r.status;console.error('Groq',model,r.status,data?.error?.code||data?.error?.type||'');
     if(![429,404,400,503].includes(r.status))break;
+  }
+  if(last===429)reject(429,'O assistente está muito procurado agora. Tente em alguns minutos ou fale com a Drica no WhatsApp.');
+  reject(502,'O assistente não respondeu agora. Tente de novo ou fale com a Drica no WhatsApp.');
+}
+
+// Gemini (Google AI Studio). Plano gratuito: modelos Flash e Flash-Lite. Se o principal estourar o limite, tenta o Flash-Lite.
+async function askGemini(system,messages){
+  const models=[process.env.AI_MODEL||'gemini-flash-latest','gemini-3.5-flash-lite'].filter((m,i,a)=>a.indexOf(m)===i);
+  const body={
+    systemInstruction:{parts:[{text:system}]},
+    contents:messages.map(m=>({role:m.role==='assistant'?'model':'user',parts:[{text:m.content}]})),
+    tools:[{functionDeclarations:TOOLS.map(t=>({name:t.name,description:t.description,parameters:t.input_schema}))}],
+    generationConfig:{maxOutputTokens:900,temperature:0.4}
+  };
+  let last=0;
+  for(const model of models){
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',headers:{'x-goog-api-key':process.env.GEMINI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(25000)});
+    const data=await r.json().catch(()=>({}));
+    if(r.ok){
+      const parts=data?.candidates?.[0]?.content?.parts||[];
+      const fc=parts.find(p=>p?.functionCall?.name==='sugerir_kit')?.functionCall;
+      return {text:parts.filter(p=>typeof p.text==='string'&&!p.thought).map(p=>p.text).join('\n').trim(),call:fc?{input:fc.args||{}}:null};
+    }
+    last=r.status;console.error('Gemini',model,r.status,data?.error?.status||'');
+    if(![429,404,400,503,500].includes(r.status))break;
   }
   if(last===429)reject(429,'O assistente está muito procurado agora. Tente em alguns minutos ou fale com a Drica no WhatsApp.');
   reject(502,'O assistente não respondeu agora. Tente de novo ou fale com a Drica no WhatsApp.');
