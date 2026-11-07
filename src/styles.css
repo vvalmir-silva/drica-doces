@@ -7,7 +7,7 @@
   .field{@apply block w-full rounded-xl border border-[#eadbd4] bg-[#fffcfa] px-3.5 py-3 min-h-12 text-base sm:text-sm text-cocoa focus:outline-none focus:ring-2 focus:ring-rose/30 focus:border-rose}
   .label{@apply block text-xs font-bold text-cocoa mb-1.5}
   .chip{@apply inline-flex items-center gap-2 rounded-full border border-[#edddd7] bg-white px-4 py-2 min-h-11 text-xs font-bold text-cocoa transition hover:border-rose}
-  .eyebrow{@apply text-[10px] sm:text-xs font-bold tracking-[.22em] uppercase text-rose}
+  .eyebrow{@apply text-[11px] sm:text-xs font-bold tracking-[.22em] uppercase text-rose}
   .h2{@apply font-display text-[33px] sm:text-[43px] tracking-[-.035em] leading-tight font-normal}
 }
 @keyframes floatUp{0%{opacity:0;transform:translateY(12px)}100%{opacity:1;transform:translateY(0)}}.enter{animation:floatUp .36s ease both}input[type=date]{min-width:0}dialog::backdrop{background:#2b1a17a0}
@@ -19,3 +19,7 @@ html{scroll-padding-top:84px}button,a,input,select,textarea{-webkit-tap-highligh
 @media (max-width: 375px){.h2{font-size:30px}.card{border-radius:20px}header .font-display{letter-spacing:-.05em}}
 @media (min-width:1024px){section[id="depoimentos"] article.card{transition:transform .22s ease,box-shadow .22s ease}section[id="depoimentos"] article.card:hover{transform:translateY(-3px);box-shadow:0 18px 30px #4a282016}}
 textarea{resize:vertical}button,a{touch-action:manipulation}
+
+/* v4.9.2 — legibilidade: nenhum texto abaixo de 11px e linhas mais compactas no celular. */
+.text-\[9px\],.text-\[10px\]{font-size:11px!important}
+@media (max-width:639px){.leading-8{line-height:1.75rem}}
