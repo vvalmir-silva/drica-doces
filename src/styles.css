@@ -26,3 +26,11 @@ textarea{resize:vertical}button,a{touch-action:manipulation}
 
 /* v4.9.5 — rosa escuro para textos pequenos (contraste AA); o rosa claro fica para ícones e destaques grandes. */
 .text-rose.underline,a.text-rose,button.text-rose,p.text-rose,span.text-rose:not(em span){color:#8F4F5A}
+
+/* v5.0 — rolagem mais leve no celular */
+.cv-auto{content-visibility:auto;contain-intrinsic-size:auto 900px}
+html{-webkit-text-size-adjust:100%}
+[role=dialog],aside[role=dialog]{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+/* o espaço do cabeçalho já vem do scroll-padding; evita somar duas vezes */
+.scroll-mt-24{scroll-margin-top:0}
+@media (max-width:767px){html{scroll-padding-top:12px}}
