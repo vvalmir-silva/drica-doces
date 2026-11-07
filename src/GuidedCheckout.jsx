@@ -2,6 +2,8 @@ import React, {useEffect, useMemo, useState} from 'react';
 import {ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Copy, CreditCard, Gift, MapPin, MessageCircle, Minus, Plus, ShoppingBag, Store, Trash2, Truck, Wallet} from 'lucide-react';
 import {WHATSAPP, DEMO_COUPONS, dateBR, digits, localToday, money, prepareWhatsApp, itemPieces} from './data.js';
 import {createOrder, getDemo, isLive, payPix, checkAvailability} from './api.js';
+import SlotPicker from './SlotPicker.jsx';
+import {maskPhone} from './ui.jsx';
 
 const empty = {name:'', phone:'', email:'', cpf:'', scheduled_at:'', fulfillment:'Retirada', payment_method:'Cartão no recebimento', cep:'', street:'', number:'', complement:'', neighborhood:'', city:'', state:'', notes:'', coupon:'', whatsapp_status_opt_in:false};
 const steps = ['Carrinho', 'Entrega', 'Confirmação'];
@@ -157,6 +159,7 @@ export default function GuidedCheckout({cart,products,settings,zones,blocked,onF
             <button type="button" className="text-sm text-rose underline font-bold" onClick={()=>{setResult(null);setStep(1);setForm(empty);setPix(null)}}>Iniciar outra encomenda</button>
           </div>:!hasItems?<div role="status" className="text-center py-9 sm:py-14"><ShoppingBag size={48} className="mx-auto text-rose opacity-60"/><h3 className="font-display text-3xl mt-5">Carrinho vazio ♡</h3><p className="text-taupe mt-3 mb-6 text-sm">Adicione pelo menos um doce antes de escolher entrega e pagamento.</p><button type="button" className="btn-dark min-h-12" onClick={onBrowse}><ShoppingBag size={16}/> Ver cardápio <ArrowRight size={16}/></button></div>:<>
             <StepHeading current={step}/>
+            <div className="lg:hidden -mt-3 mb-5 flex justify-between items-center rounded-xl bg-[#fbf3f0] px-4 py-2.5 text-sm"><span className="text-taupe">{count} item(ns)</span><strong className="tabular-nums">Total {fee===null?'a calcular':money(total)}</strong></div>
             {validation&&<p role="alert" className="mb-4 text-sm p-3 rounded-xl bg-[#fff1f0] border border-[#f3c6c5] text-[#9c3737]">{validation}</p>}
             {step===1&&<div className="enter space-y-5">
               <div className="flex justify-between gap-2 items-center"><h3 className="font-display text-2xl">Revise seu carrinho</h3><button className="text-xs text-rose font-bold underline" onClick={onBrowse}>Adicionar doces</button></div>
@@ -173,12 +176,11 @@ export default function GuidedCheckout({cart,products,settings,zones,blocked,onF
               <div><h3 className="font-display text-2xl">Dados e entrega</h3><p className="text-taupe text-xs mt-1">Preencha as informações para reservar a data desejada.</p></div>
               <div className="grid sm:grid-cols-2 gap-3">
                 <Field title="Nome completo *" extraClass="sm:col-span-2"><input className="field" autoComplete="name" value={form.name} maxLength={90} onChange={e=>set('name',e.target.value)} placeholder="Seu nome"/></Field>
-                <Field title="WhatsApp com DDD *"><input className="field" type="tel" autoComplete="tel" maxLength={20} value={form.phone} onChange={e=>set('phone',e.target.value)} placeholder="(11) 99999-9999"/></Field>
-                <Field title="E-mail (opcional, exceto Pix)"><input className="field" type="email" autoComplete="email" value={form.email} onChange={e=>set('email',e.target.value)} placeholder="voce@email.com"/></Field>
-                <Field title="Data desejada *"><input className="field" type="date" min={today} value={scheduledDate} onChange={e=>set('scheduled_at',e.target.value+'T'+(scheduledHour||'12:00'))}/></Field>
-                <Field title="Horário desejado *"><input className="field" type="time" min={settings.open_time} max={settings.close_time} value={scheduledHour} onChange={e=>set('scheduled_at',(scheduledDate||today)+'T'+e.target.value)}/></Field>
+                <Field title="WhatsApp com DDD *"><input className="field" type="tel" inputMode="tel" autoComplete="tel-national" maxLength={16} value={form.phone} onChange={e=>set('phone',maskPhone(e.target.value))} placeholder="(11) 99999-9999"/></Field>
+                <Field title="E-mail (opcional, exceto Pix)"><input className="field" type="email" inputMode="email" autoComplete="email" value={form.email} onChange={e=>set('email',e.target.value)} placeholder="voce@email.com"/></Field>
               </div>
-              <p className="text-xs text-taupe">Antecedência mínima: {settings.min_hours||0} horas · Horários de {settings.open_time} às {settings.close_time}, sujeitos à disponibilidade.</p>
+              <SlotPicker value={form.scheduled_at} onChange={v=>set('scheduled_at',v)} settings={settings} blocked={blocked}/>
+              <p className="text-xs text-taupe">Pedidos com {settings.min_hours||0}h de antecedência · a Drica confirma a disponibilidade pelo WhatsApp.</p>
               {scheduledDate&&<div role="status" className={`rounded-xl p-3 text-xs ${availability&&(!availability.can_book||availability.blocked)?'bg-[#fff1ef] text-[#8e382f]':'bg-[#eaf4eb] text-[#285c41]'}`}>{availabilityBusy?'Consultando capacidade de produção...':availability?availability.blocked?'Data bloqueada na agenda.':`Capacidade nesta data: ${availability.available.toLocaleString('pt-BR')} docinhos livres de ${availability.capacity.toLocaleString('pt-BR')}. ${availability.can_book?'Quantidade permitida; aguarde a confirmação da Drica.':'Escolha outro dia ou reduza a quantidade.'}`:'A disponibilidade será validada quando o pedido for registrado.'}</div>}
               <div className="grid grid-cols-2 gap-2 sm:gap-3"><button type="button" onClick={()=>set('fulfillment','Retirada')} aria-pressed={form.fulfillment==='Retirada'} className={`min-h-14 flex justify-center items-center gap-2 rounded-xl border text-xs sm:text-sm font-bold ${form.fulfillment==='Retirada'?'bg-blush border-rose':'bg-white border-[#ebd9d2]'}`}><Store size={18}/> Retirada</button><button type="button" onClick={()=>set('fulfillment','Entrega')} aria-pressed={form.fulfillment==='Entrega'} className={`min-h-14 flex justify-center items-center gap-2 rounded-xl border text-xs sm:text-sm font-bold ${form.fulfillment==='Entrega'?'bg-blush border-rose':'bg-white border-[#ebd9d2]'}`}><Truck size={18}/> Entrega</button></div>
               {form.fulfillment==='Entrega'&&<div className="bg-[#fff7f3] border border-[#f0e3dc] p-3 sm:p-4 rounded-2xl space-y-3">
@@ -213,7 +215,7 @@ export default function GuidedCheckout({cart,products,settings,zones,blocked,onF
             </form>}
           </>}
         </div>
-        <aside className="order-2 bg-blush rounded-[24px] p-5 sm:p-7 lg:sticky lg:top-24"><p className="eyebrow">♡ Drica Doces</p><h3 className="font-display text-2xl mt-2">Resumo da encomenda</h3><div className="mt-5 space-y-3"><Line label="Doces" value={`${count} item(ns)`}/><Line label="Subtotal" value={money(subtotal)}/><Line label="Frete" value={form.fulfillment==='Retirada'?'Grátis':fee===null?'A consultar':money(fee)}/><div className="border-t border-[#e4cec9] pt-3"><Line label="Total estimado" value={fee===null?'Após cotação':money(total)} strong/></div></div><p className="text-[11px] text-taupe mt-5 leading-5">Fotos e valores de produtos são ilustrativos até atualização no painel. Confirme a disponibilidade com a confeitaria.</p>{!result&&step===1&&<button type="button" className="btn-soft mt-4 w-full" onClick={onEditCart}><ShoppingBag size={16}/> Abrir carrinho lateral</button>}</aside>
+        <aside className="order-2 bg-blush rounded-[24px] p-5 sm:p-7 lg:sticky lg:top-24"><p className="eyebrow">♡ Drica Doces</p><h3 className="font-display text-2xl mt-2">Resumo da encomenda</h3><div className="mt-5 space-y-3"><Line label="Doces" value={`${count} item(ns)`}/><Line label="Subtotal" value={money(subtotal)}/><Line label={form.fulfillment==='Retirada'?'Retirada':'Entrega'} value={form.fulfillment==='Retirada'?'Sem frete':fee===null?'A consultar':money(fee)}/><div className="border-t border-[#e4cec9] pt-3"><Line label="Total estimado" value={fee===null?'Após cotação':money(total)} strong/></div></div>{!result&&step===1&&<button type="button" className="btn-soft mt-4 w-full" onClick={onEditCart}><ShoppingBag size={16}/> Abrir carrinho lateral</button>}</aside>
       </div>
     </div>
   </section>;
