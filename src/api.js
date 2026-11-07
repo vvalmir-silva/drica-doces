@@ -49,3 +49,4 @@ export async function requestPixForTrackedOrder(code,phone,cpf){if(!isLive)throw
 let configPromise=null;
 export const getConfig=()=>{if(!isLive)return Promise.resolve({pix:false,ai:false});configPromise??=fetch('/api/config').then(r=>r.ok?r.json():{}).catch(()=>({}));return configPromise};
 export const askAssistant=(messages,cart='')=>postJSON('/api/assistant',{messages,cart});
+export const sendFeedback=(topic,vote)=>postJSON('/api/assistant-feedback',{topic,vote});

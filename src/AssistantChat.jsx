@@ -1,12 +1,13 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {MessageCircle,Send,ShoppingBag,Sparkles,X} from 'lucide-react';
-import {askAssistant} from './api.js';
+import {askAssistant,sendFeedback} from './api.js';
 import {WHATSAPP,money} from './data.js';
 import {useDialog} from './ui.jsx';
 
 const KEY='drica-assistente-v1';
 const HELLO={role:'assistant',content:'Oi! Sou a assistente virtual da Drica 💗 Posso calcular quantos docinhos você precisa, montar um kit e tirar dúvidas sobre prazos e retirada.'};
-const SUGGESTIONS=['Quantos docinhos para 30 convidados?','Monte um kit de 100 docinhos','Com quanta antecedência devo pedir?','Vocês fazem entrega?','Tenho uma data em mente, tem vaga?'];
+const SUGGESTIONS=['Quantos docinhos para 30 convidados?','Monte um kit de 100 docinhos','Com quanta antecedência devo pedir?','Vocês fazem entrega?','Tenho uma data em mente, tem vaga?','Tenho uma festa infantil, o que pedir?'];
+const NAV=[['Ver cardápio','cardapio'],['Encomendar','encomendar']];
 const CHANGES=[['Trocar um sabor','Troque um dos sabores do kit, por favor.'],['Aumentar o kit','Aumente o kit em 50 docinhos.'],['Diminuir o kit','Diminua o kit em 50 docinhos.']];
 // Link do WhatsApp já com a última pergunta da pessoa, para a Drica entender o contexto.
 const waLink=(list,i)=>{const q=[...list.slice(0,i)].reverse().find(x=>x.role==='user')?.content||'';return `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(`Olá, Drica! Vim pelo site. ${q}`.trim())}`};
@@ -14,15 +15,15 @@ const cartText=cart=>(cart||[]).map(c=>`${c.qty}× ${c.mix_label?`kit (${c.mix_l
 const load=()=>{try{const v=JSON.parse(sessionStorage.getItem(KEY)||'null');return Array.isArray(v)&&v.length?v:[HELLO]}catch{return[HELLO]}};
 
 // Efeito de digitação: a resposta aparece aos poucos (só nas respostas novas).
-function Typed({text}){
+function Typed({text,onDone}){
   const [n,setN]=useState(0);
   const step=Math.max(2,Math.ceil(text.length/150));
-  useEffect(()=>{if(n>=text.length)return;const t=setTimeout(()=>setN(n+step),20);return()=>clearTimeout(t)},[n,text,step]);
+  useEffect(()=>{if(n>=text.length){onDone?.();return}const t=setTimeout(()=>setN(n+step),20);return()=>clearTimeout(t)},[n,text,step]);
   return <>{text.slice(0,n)}</>;
 }
 
 /** Chat da assistente de encomendas (carregado só quando aberto). */
-export default function AssistantChat({onClose,onAddKit,cart}){
+export default function AssistantChat({onClose,onAddKit,onGo,onTrack,cart}){
   const [msgs,setMsgs]=useState(load);
   const [text,setText]=useState('');
   const [busy,setBusy]=useState(false);
@@ -37,10 +38,11 @@ export default function AssistantChat({onClose,onAddKit,cart}){
     // A API recebe só o texto da conversa (sem a saudação inicial), começando por uma pergunta.
     const history=next.filter(m=>m.content&&m.content!==HELLO.content&&!m.error).map(({role,content})=>({role,content})).slice(-14);
     while(history.length&&history[0].role!=='user')history.shift();
-    try{const {reply,kit,photo}=await askAssistant(history,cartText(cart));setMsgs(m=>[...m,{role:'assistant',content:reply,kit:kit||null,photo:photo||null,fresh:true}])}
+    try{const {reply,kit,photo,topic}=await askAssistant(history,cartText(cart));setMsgs(m=>[...m,{role:'assistant',content:reply,kit:kit||null,photo:photo||null,topic,fresh:true}])}
     catch(err){setMsgs(m=>[...m,{role:'assistant',content:err.message||'Não consegui responder agora.',error:true}])}
     finally{setBusy(false);setTimeout(()=>inputRef.current?.focus({preventScroll:true}),50)}
   }
+  function vote(i,v){const m=msgs[i];if(!m?.topic||m.vote)return;setMsgs(prev=>prev.map((x,j)=>j===i?{...x,vote:v}:x));sendFeedback(m.topic,v).catch(()=>{})}
   function reset(){setMsgs([HELLO]);try{sessionStorage.removeItem(KEY)}catch{}}
   const wpp=`https://wa.me/${WHATSAPP}?text=${encodeURIComponent('Olá, Drica! Vim pelo site e queria tirar uma dúvida sobre encomendas.')}`;
 
@@ -55,7 +57,7 @@ export default function AssistantChat({onClose,onAddKit,cart}){
       <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3" aria-live="polite">
         {msgs.map((m,i)=><div key={i} className={`flex ${m.role==='user'?'justify-end':'justify-start'}`}>
           <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed whitespace-pre-line ${m.role==='user'?'bg-cocoa text-white rounded-br-md':m.error?'bg-[#fff1ef] text-[#8e382f] rounded-bl-md':'bg-white border border-[#efe0da] text-cocoa rounded-bl-md'}`}>
-            {m.fresh?<Typed text={m.content||''}/>:m.content}
+            {m.fresh?<Typed text={m.content||''} onDone={()=>setMsgs(prev=>prev.map((x,j)=>j===i&&x.fresh?{...x,fresh:false}:x))}/>:m.content}
             {m.photo&&<figure className="mt-3"><img src={m.photo.url} alt={`Docinho de ${m.photo.name}`} loading="lazy" width="400" height="300" className="w-full max-h-44 object-cover rounded-xl"/><figcaption className="text-xs text-taupe mt-1">{m.photo.name}</figcaption></figure>}
             {m.kit&&<div className="mt-3 rounded-xl bg-[#fbf3f0] border border-[#efdcd6] p-3">
               <p className="text-xs font-bold uppercase tracking-[.12em] text-roseink">Kit sugerido</p>
@@ -65,8 +67,12 @@ export default function AssistantChat({onClose,onAddKit,cart}){
               <button type="button" className="btn-dark w-full !min-h-11 mt-2 text-xs" onClick={()=>onAddKit(m.kit)}><ShoppingBag size={15}/> Adicionar ao carrinho</button>
             </div>}
             {m.role!=='user'&&/whatsapp/i.test(m.content||'')&&<a href={waLink(msgs,i)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-[#1f7a4d] min-h-9"><MessageCircle size={14}/> Combinar pelo WhatsApp</a>}
+            {m.role!=='user'&&m.topic&&!m.error&&!m.fresh&&<div className="mt-2 flex gap-1 justify-end" aria-label="Esta resposta ajudou?">
+              {[['up','👍','Resposta útil'],['down','👎','Resposta não ajudou']].map(([v,emoji,label])=><button key={v} type="button" disabled={!!m.vote} aria-label={label} aria-pressed={m.vote===v} onClick={()=>vote(i,v)} className={`min-h-9 min-w-9 rounded-full text-sm ${m.vote===v?'bg-blush':'hover:bg-blush'} disabled:opacity-60`}>{emoji}</button>)}
+            </div>}
           </div>
         </div>)}
+        {msgs.length>1&&msgs.at(-1)?.role==='assistant'&&!msgs.at(-1).error&&!busy&&<div className="flex flex-wrap gap-2">{NAV.map(([label,id])=><button type="button" key={id} className="chip !min-h-10 !py-2" onClick={()=>onGo?.(id)}>{label}</button>)}<button type="button" className="chip !min-h-10 !py-2" onClick={()=>onTrack?.()}>Acompanhar pedido</button></div>}
         {msgs.at(-1)?.kit&&!busy&&<div className="flex flex-wrap gap-2">{CHANGES.map(([label,q])=><button type="button" key={label} className="chip !min-h-10 !py-2" onClick={()=>ask(q)}>{label}</button>)}</div>}
         {busy&&<div className="flex justify-start"><div className="bg-white border border-[#efe0da] rounded-2xl rounded-bl-md px-4 py-3" aria-label="Consultando"><div className="flex gap-1">{[0,1,2].map(i=><span key={i} className="h-2 w-2 rounded-full bg-rose/60 animate-bounce" style={{animationDelay:`${i*120}ms`}}/>)}</div><p className="text-xs text-taupe mt-1.5">Consultando os sabores e a agenda…</p></div></div>}
         {msgs.length<=1&&!busy&&<div className="flex flex-wrap gap-2 pt-1">{SUGGESTIONS.map(s=><button type="button" key={s} className="chip !min-h-10 !py-2 text-left" onClick={()=>ask(s)}>{s}</button>)}</div>}

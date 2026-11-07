@@ -22,6 +22,7 @@ async function dailyCap(){
   const n=Number((await r.json().catch(()=>null))?.[0]?.result);
   if(!r.ok||!Number.isFinite(n))reject(503,'Assistente indisponível no momento.');
   if(n>limit)reject(429,'O assistente atingiu o limite de hoje. Fale com a Drica pelo WhatsApp.');
+  return{n,limit};
 }
 
 const lead=h=>{h=Number(h)||0;return h>=24&&h%24===0?`${h/24} dias`:`${h} horas`};
@@ -58,6 +59,7 @@ FATOS DA LOJA (use somente estes; não invente nada além deles):
 
 COMO RESPONDER:
 - Respostas curtas: no máximo 3 frases ou uma lista curta. Sem markdown pesado.
+- Se a pessoa disser o tipo de festa, dê uma sugestão de proporção e diga que é só uma sugestão: infantil, mais brigadeiros e bicho de pé; casamento ou formatura, mix equilibrado com beijinhos; corporativo, sabores clássicos.
 - Para estimar quantidades, use como referência de 4 a 6 docinhos por convidado (diga que é uma estimativa) e arredonde para múltiplos de 25, respeitando o mínimo de ${MIN_KIT}.
 - Quando a pessoa quiser montar um kit ou aceitar sua sugestão, chame a ferramenta sugerir_kit com o total e a divisão por sabor (a soma precisa bater com o total). Se ela não disser os sabores, divida de forma equilibrada entre todos.
 - Se o total passar de ${MAX_KIT}, sugira um kit de ${MAX_KIT} com sugerir_kit e diga que o restante é combinado com a Drica pelo WhatsApp.
@@ -84,6 +86,16 @@ const TOOLS=[{
   },required:['date','quantidade']}
 }];
 const TOOL_NAMES=TOOLS.map(t=>t.name);
+
+// Respostas prontas para as dúvidas mais comuns (usam só os dados da loja).
+function faqReply(q,settings,delivery){
+  const s=norm(q);if(s.length>90)return null;
+  const hours=`${settings.open_time||'09:00'} às ${settings.close_time||'18:00'}`;
+  if(/entreg/.test(s)&&!/kit|convidad|quantos/.test(s))return delivery?'Fazemos entrega em regiões atendidas; a taxa é calculada pelo CEP no checkout. Também há retirada.':'No momento, os pedidos pelo site são para retirada. Para entrega, consulte a Drica pelo WhatsApp: (11) 96082-9925.';
+  if(/antecedenc|com quanto tempo|quanto tempo antes|prazo/.test(s))return `Encomendas precisam ser feitas com pelo menos ${lead(settings.min_hours)} de antecedência. A Drica confirma a data pelo WhatsApp: (11) 96082-9925.`;
+  if(/retir|horario|que horas/.test(s)&&!/kit|convidad/.test(s))return `Retirada e entrega no horário de ${hours}. A Drica confirma o horário pelo WhatsApp: (11) 96082-9925.`;
+  return null;
+}
 
 // Resposta da ferramenta verificar_data, calculada no servidor a partir da agenda real.
 async function availabilityReply(db,settings,input){
@@ -118,7 +130,7 @@ export default handle(async(req,res)=>{
   const messages=[];
   for(const m of parsed){if(messages.length&&messages.at(-1).role===m.role)messages[messages.length-1]=m;else messages.push(m)}
   if(messages[0].role!=='user'||messages.at(-1).role!=='user')reject(400,'Conversa inválida.');
-  await dailyCap();
+  const cap=await dailyCap();
 
   const db=serverDB();
   const [{data:products,error:pe},{data:settings,error:se},{count:zones}]=await Promise.all([
@@ -131,6 +143,10 @@ export default handle(async(req,res)=>{
   const unit=(products||[]).find(p=>p.id==='cento-misto')?.options?.find(o=>o.id==='mixed-custom')?.price_cents;
   const cento=(products||[]).flatMap(p=>p.options||[]).find(o=>/(^|-)hundred$/.test(o.id)&&o.id!=='mixed-hundred')?.price_cents;
 
+  const lastQ=messages.at(-1).content,topic=topicOf(lastQ);
+  // Perguntas frequentes são respondidas do cadastro, sem gastar a cota da IA.
+  const faq=faqReply(lastQ,settings,(zones||0)>0);
+  if(faq){await countTopic(topic);return send(res,200,{reply:faq,kit:null,photo:null,topic})}
   const cart=typeof req.body?.cart==='string'?req.body.cart.trim().slice(0,300):'';
   const system=systemPrompt({flavors,unit,cento,settings,delivery:(zones||0)>0,pix:pixEnabled(),cart});
   const out=PROVIDER==='gemini'?await askGemini(system,messages):PROVIDER==='groq'?await askGroq(system,messages):await askAnthropic(system,messages);
@@ -150,10 +166,11 @@ export default handle(async(req,res)=>{
   if(!reply&&call?.name==='sugerir_kit'&&Number(call.input?.total)>MAX_KIT)reply=`Para mais de ${MAX_KIT} docinhos, a Drica combina tudo pessoalmente pelo WhatsApp: (11) 96082-9925.`;
   if(!reply)reply='Desculpe, não consegui responder agora. Pode reformular ou falar com a Drica no WhatsApp?';
   // Foto do sabor citado na resposta (ou na pergunta), quando o cadastro tem imagem.
-  const said=norm(`${reply} ${messages.at(-1).content}`);
+  const said=norm(`${reply} ${lastQ}`);
   const f=flavors.find(x=>x.image_url&&said.includes(norm(x.name)));
-  await countTopic(topicOf(messages.at(-1).content));
-  return send(res,200,{reply:reply.slice(0,1500),kit,photo:f?{name:f.name,url:f.image_url}:null});
+  await countTopic(topic);
+  if(cap.n>=cap.limit-10)reply+=' Estou com muitas conversas hoje; se precisar de resposta rápida, a Drica responde pelo WhatsApp.';
+  return send(res,200,{reply:reply.slice(0,1500),kit,photo:f?{name:f.name,url:f.image_url}:null,topic});
 });
 
 async function askAnthropic(system,messages){
