@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Copy, CreditCard, Gift, MapPin, MessageCircle, Minus, Plus, ShoppingBag, Store, Trash2, Truck, Wallet} from 'lucide-react';
-import {WHATSAPP, DEMO_COUPONS, dateBR, digits, localToday, money, prepareWhatsApp} from './data.js';
+import {WHATSAPP, DEMO_COUPONS, dateBR, digits, localToday, money, prepareWhatsApp, itemPieces} from './data.js';
 import {createOrder, getDemo, isLive, payPix, checkAvailability} from './api.js';
 
 const empty = {name:'', phone:'', email:'', cpf:'', scheduled_at:'', fulfillment:'Retirada', payment_method:'Cartão no recebimento', cep:'', street:'', number:'', complement:'', neighborhood:'', city:'', state:'', notes:'', coupon:'', whatsapp_status_opt_in:false};
@@ -50,9 +50,9 @@ export default function GuidedCheckout({cart,products,settings,zones,blocked,onF
   }).filter(x=>x.option && x.option.price_cents>0 && Number.isInteger(x.qty) && x.qty>0),[cart,products]);
   const subtotal=rows.reduce((s,r)=>s+(r.option.price_cents+(r.gift_wrap?Number(settings.gift_wrap_cents||0):0))*r.qty,0);
   const hasItems=rows.length>0 && subtotal>0;
-  const largeOrder=rows.reduce((n,r)=>n+(r.option_id==='mixed-custom'?r.qty:r.option_id==='mixed-half'?50*r.qty:100*r.qty),0)>500;
+  const largeOrder=rows.reduce((n,r)=>n+itemPieces(r),0)>500;
   const count=rows.reduce((s,r)=>s+r.qty,0);
-  const pieceCount=rows.reduce((n,r)=>n+(r.option_id==='mixed-custom'?r.qty:r.option_id==='mixed-half'?r.qty*50:r.qty*100),0);
+  const pieceCount=rows.reduce((n,r)=>n+itemPieces(r),0);
   const zone=form.fulfillment==='Entrega' ? [...(zones||[])].filter(z=>z.active!==false && z.cep_prefix && digits(form.cep).startsWith(z.cep_prefix)).sort((a,b)=>b.cep_prefix.length-a.cep_prefix.length)[0] : null;
   const fee=form.fulfillment==='Retirada'?0:zone?.fee_cents??null;
   const noFreight=form.fulfillment==='Entrega' && fee===null;

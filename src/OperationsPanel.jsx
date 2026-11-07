@@ -1,9 +1,9 @@
 import React,{useMemo,useState} from 'react';
 import {CalendarDays,Check,Package,Plus,Save,Trash2,Wallet,MessageCircle} from 'lucide-react';
-import {money,dateBR,localToday,digits,statusLabels,WHATSAPP} from './data.js';
+import {money,dateBR,localToday,digits,statusLabels,WHATSAPP,itemPieces} from './data.js';
 
 // Somente no painel autenticado. Os dados completos vêm de tabelas com RLS administrativo.
-export function pieces(item){if(item.option_id==='mixed-custom')return item.qty;if(item.option_id==='mixed-half')return item.qty*50;return item.qty*100;}
+export function pieces(item){return itemPieces(item);}
 export function flavors(order){const map={};for(const item of(order.order_items||order.items||[])){
   const entries=item.mix_breakdown&&Object.keys(item.mix_breakdown).length?Object.entries(item.mix_breakdown).map(([id,n])=>[id,Number(n)*(item.option_id==='mixed-custom'?1:Number(item.qty)||1)]):[[item.product_name||item.name, pieces(item)]];
   for(const [key,n] of entries)map[key]=(map[key]||0)+n;

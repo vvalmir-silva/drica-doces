@@ -9,7 +9,7 @@ SELECT COUNT(*) AS total_pedidos FROM public.orders;
 SELECT u.email, (a.user_id IS NOT NULL) AS possui_acesso_administrativo
 FROM auth.users AS u
 LEFT JOIN public.admin_users AS a ON a.user_id = u.id
-WHERE a.user_id IS NOT NULL OR lower(u.email) = 'drica1209@gmail.com'
+WHERE a.user_id IS NOT NULL OR lower(u.email) = 'EMAIL-DO-ADMIN@exemplo.com'
 ORDER BY possui_acesso_administrativo DESC, u.email;
 
 -- 3. Confirme se as políticas de acesso continuam presentes.

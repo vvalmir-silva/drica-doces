@@ -53,3 +53,8 @@ export async function sendStatusWhatsApp(order,statusLabel){
   return {state:'accepted',message_id};
  }catch(err){console.error('Meta WhatsApp indisponível:',err?.name||'request_error');return {state:'network_error'}}
 }
+// Quantos docinhos cada unidade de uma opção representa (capacidade diária e limite de 500).
+// A opção pode declarar "sweets" no JSON do produto; sem isso: *-hundred=100, *-half=50, demais=1.
+export function piecesPerUnit(optionId,sweets){const n=Number(sweets);if(Number.isSafeInteger(n)&&n>0&&n<=100000)return n;const id=String(optionId||'');if(id==='mixed-custom')return 1;if(/(^|-)half$/.test(id))return 50;if(/(^|-)hundred$/.test(id))return 100;return 1}
+export const itemPieces=item=>piecesPerUnit(item?.option_id,item?.sweets_per_unit)*(Number(item?.qty)||0);
+export const adminEmail=()=>{const v=String(process.env.ORDER_NOTIFICATION_EMAIL||'').trim();return emailValid(v)?v:null};

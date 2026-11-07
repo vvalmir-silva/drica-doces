@@ -1,3 +1,27 @@
+# Drica Doces PRO v4.9 — correções da revisão de código
+
+**O que mudou**
+- **Cupons voltam a salvar no painel** (permissão corrigida na migração 008).
+- **Pix renovável:** se o QR Code vencer, for cancelado ou recusado, o cliente gera um novo. Cada Pix vale 60 minutos (ajuste com `PIX_EXPIRATION_MINUTES`, 30–1440). Só existe um Pix aberto por pedido.
+- **Webhook:** Pix vencido/cancelado/recusado e estornos atualizam o status de pagamento do pedido.
+- **Retentativa segura:** tocar duas vezes ou perder a conexão não gera erro de "cupom inválido"; o mesmo pedido é devolvido.
+- **Capacidade diária correta:** cada item grava quantos docinhos vale (`sweets_per_unit`). Opções terminadas em `-hundred` = 100, `-half` = 50, demais = 1. Para outro valor, adicione `"sweets": N` na opção do produto.
+- **Privacidade:** e-mails pessoais removidos do código e da documentação. O aviso de novo pedido só é enviado se `ORDER_NOTIFICATION_EMAIL` estiver configurada na Vercel.
+- **Cabeçalhos de segurança** (`vercel.json`): CSP, proteção contra o site ser embutido em outra página, HSTS, etc.
+- **Site mais leve:** o painel administrativo carrega só quando aberto; bibliotecas separadas para melhor cache.
+
+**Para atualizar**
+1. Faça backup do Supabase. No **SQL Editor**, execute **somente** `supabase/migrations/008_review_fixes.sql` (depois da 007).
+2. Na Vercel, confirme `ORDER_NOTIFICATION_EMAIL` (Production). Sem ela, o e-mail de novo pedido não é enviado.
+3. Supabase → **Authentication → Sign In / Providers** → desative **Allow new users to sign up** (o admin já existe; ninguém mais precisa criar conta).
+4. Publique (Commit + Push) e espere o deploy **Ready**.
+
+**Testes sugeridos:** criar/editar um cupom no painel; fazer pedido com cupom e tocar duas vezes em enviar; gerar Pix, esperar vencer e gerar outro; conferir a Agenda (docinhos reservados); abrir o site e o painel e verificar que nada ficou em branco (CSP).
+
+> Se o projeto usar domínio personalizado no Supabase (não `*.supabase.co`), adicione-o ao `connect-src` do `vercel.json`.
+
+---
+
 # Drica Doces PRO v4.8 — correção do carregamento do painel de pedidos
 
 **O que foi corrigido:** a consulta das encomendas (`orders`) não depende mais do sucesso das consultas de estoque, pagamentos, notificações e depoimentos. Se uma dessas tabelas estiver ausente ou com permissão incorreta, as encomendas continuarão visíveis aos administradores autorizados, acompanhadas de um aviso específico. Itens de cada pedido são buscados separadamente; erro neles não oculta as encomendas. Erros na consulta principal aparecem em uma mensagem persistente e existe um botão `Atualizar pedidos`.
@@ -82,7 +106,7 @@ limit 30;
 
 **Fotos ilustrativas:** as três fotos estão separadas por sabor, mas devem ser substituídas por fotos próprias da Drica quando possível.
 
-**Conta administrativa:** contas reais são criadas exclusivamente pelo **Supabase → Authentication → Users**. Depois autorize o UUID do usuário em `public.admin_users`. Não há login ou senha padrão no ZIP. Se o endereço informado for `drica1209@gmailcom`, confirme e corrija o domínio antes de cadastrar. Use senha nova e forte, que não tenha sido compartilhada em mensagens. Nunca inclua senhas e chaves em arquivos do GitHub.
+**Conta administrativa:** contas reais são criadas exclusivamente pelo **Supabase → Authentication → Users**. Depois autorize o UUID do usuário em `public.admin_users`. Não há login ou senha padrão no ZIP. Use senha nova e forte, que não tenha sido compartilhada em mensagens. Nunca inclua senhas e chaves em arquivos do GitHub.
 
 **Testes:** prévia HTML testada em cinco larguras de tela, conferência dos valores e análise sintática JSX/JavaScript concluídas. O build React integral não foi executado neste ambiente por falta de acesso ao registro npm; confirme o resultado no Deploy da Vercel. Integrações Supabase e notificações exigem validação no servidor publicado.
 
@@ -390,7 +414,7 @@ A loja React agora usa `src/GuidedCheckout.jsx`, um checkout mobile-first em **t
 - Consulta por código de pedido + telefone, com status recebido/confirmado/preparando/pronto/entregue/cancelado e acompanhamento do pagamento.
 - Painel administrativo: gestão de pedidos, edição/cadastro de doces e preços, fotos por URL, cupons, regiões por prefixo de CEP/taxas, bloqueio de datas, antecedência mínima, capacidade de agendamento, embalagem, Instagram, horários e fidelidade.
 - Registro de pedidos **no servidor com validação de preços**, bloqueio de concorrência para horário cheio por transação SQL, limite antiabuso Redis e RLS para dados privados.
-- E-mail de nova solicitação para **vvalmir0107@gmail.com** via Resend, aviso ao cliente ao mudar status (quando forneceu e-mail) e alerta de Pix confirmado.
+- E-mail de nova solicitação para **SEU-EMAIL@exemplo.com** via Resend, aviso ao cliente ao mudar status (quando forneceu e-mail) e alerta de Pix confirmado.
 - Integração Mercado Pago Pix: criação de transação/QR Code pelo servidor, confirmação por **webhook assinado e consulta ao provedor**. Não marca como pago só pelo cliente clicar.
 - WhatsApp: encaminha resumo ao número oficial, cliente toca em Enviar. Mensagens automáticas de status pela API oficial Meta **somente se habilitadas**, usando template aprovado (ou use o botão manual do painel).
 - Fidelidade: ao marcar como entregue um múltiplo de *N* pedidos daquele cliente, com `LOYALTY_PEPPER` configurado, cria cupom exclusivo, comunicado por e-mail quando houver endereço disponível. Descontos promocionais via cupons também funcionam.
@@ -440,7 +464,7 @@ O banco habilita **RLS**; apenas administradores cadastrados podem gerenciar dad
 
 ## 3 — Criar serviço de envio de e-mail e proteção contra abusos
 
-- Crie conta no [Resend](https://resend.com), valide um **domínio de remetente** e gere `RESEND_API_KEY`. Defina `RESEND_FROM_EMAIL` usando um e-mail do domínio autorizado. **O destinatário já é `vvalmir0107@gmail.com`** e pode ser alterado por `ORDER_NOTIFICATION_EMAIL`.
+- Crie conta no [Resend](https://resend.com), valide um **domínio de remetente** e gere `RESEND_API_KEY`. Defina `RESEND_FROM_EMAIL` usando um e-mail do domínio autorizado. **O destinatário já é `SEU-EMAIL@exemplo.com`** e pode ser alterado por `ORDER_NOTIFICATION_EMAIL`.
 - Crie banco no [Upstash Redis](https://upstash.com/); configure `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN`. **A API de pedidos recusa solicitações em produção sem estes dados**, para evitar disparos abusivos sem proteção. Há limites por IP em pedidos, consultas e geração de Pix. Para reforçar segurança, coloque Cloudflare Turnstile/WAF na borda, proteção de bots e monitoração de logs.
 - Para testar funções localmente com variáveis do servidor, use `npx vercel dev` (o `npm run dev` do Vite **não serve** `/api/**`).
 

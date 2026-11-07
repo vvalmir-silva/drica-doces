@@ -1,5 +1,4 @@
 export const WHATSAPP='5511960829925';
-export const ALERT_EMAIL='vvalmir0107@gmail.com';
 export const money=(cents=0)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(cents)/100);
 export const digits=v=>String(v||'').replace(/\D/g,'');
 export const demoProducts=[
@@ -16,3 +15,8 @@ export function dateBR(iso){if(!iso)return'';const [date,time]=iso.split('T');re
 export function localToday(){const d=new Date();return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(d)}
 export function subtotal(items,catalog){return Object.entries(items).reduce((sum,[id,item])=>{const option=catalog.flatMap(p=>p.options).find(o=>o.id===id);return sum+(option?.price_cents||0)*item.qty},0)}
 export function prepareWhatsApp(order){const lines=(order.items||[]).map(x=>`• ${x.name} — ${x.option_label}${x.mix_label?' ['+x.mix_label+']':''} (${x.qty} × ${money(x.unit_price_cents+(x.extra_cents||0))}) = ${money(x.qty*(x.unit_price_cents+(x.extra_cents||0)))}${x.gift_wrap?' [embalagem para presente]':''}${x.personal_message?' [cartão: '+x.personal_message+']':''}`);const text=[`*DRICA DOCES — ENCOMENDA ${order.code}*`,'',...lines,'',`Subtotal: ${money(order.subtotal_cents)}`,`Desconto: ${money(order.discount_cents||0)}`,`Entrega: ${order.delivery_fee_cents===null?'A confirmar':money(order.delivery_fee_cents||0)}`,`*Total${order.delivery_fee_cents===null?' parcial':''}: ${money(order.total_cents)}*`,'',`Cliente: ${order.customer_name}`,`WhatsApp: ${order.customer_phone}`,`Data/Hora: ${dateBR(order.scheduled_at)}`,`Recebimento: ${order.fulfillment}`,...(order.address?['Endereço: '+order.address]:[]),`Pagamento: ${order.payment_method}`,...(order.notes?['Observações: '+order.notes]:[]),'','*Pedido solicitado pelo site. Aguardando confirmação da confeitaria.*'].join('\n');return`https://wa.me/${WHATSAPP}?text=${encodeURIComponent(text)}`}
+
+// Quantos docinhos cada unidade de uma opção representa (capacidade e limite de 500).
+// Opção pode declarar "sweets" no JSON; sem isso: *-hundred=100, *-half=50, demais=1.
+export function piecesPerUnit(optionId,sweets){const n=Number(sweets);if(Number.isSafeInteger(n)&&n>0)return n;const id=String(optionId||'');if(id==='mixed-custom')return 1;if(/(^|-)half$/.test(id))return 50;if(/(^|-)hundred$/.test(id))return 100;return 1}
+export const itemPieces=item=>piecesPerUnit(item?.option_id,item?.sweets_per_unit??item?.sweets)*(Number(item?.qty)||0);
