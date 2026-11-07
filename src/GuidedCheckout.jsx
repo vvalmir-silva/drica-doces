@@ -1,7 +1,7 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {ArrowLeft, ArrowRight, Check, CheckCircle2, ClipboardList, Copy, CreditCard, Gift, MapPin, MessageCircle, Minus, Plus, ShoppingBag, Store, Trash2, Truck, Wallet} from 'lucide-react';
 import {WHATSAPP, DEMO_COUPONS, dateBR, digits, localToday, money, prepareWhatsApp, itemPieces, leadTime} from './data.js';
-import {createOrder, getDemo, isLive, payPix, checkAvailability} from './api.js';
+import {createOrder, getDemo, isLive, payPix, checkAvailability, getConfig} from './api.js';
 import SlotPicker from './SlotPicker.jsx';
 import {maskPhone} from './ui.jsx';
 
@@ -49,7 +49,7 @@ export default function GuidedCheckout({cart,products,settings,zones,blocked,onF
   const deliveryOn=(zones||[]).length>0;
   const [pixOn,setPixOn]=useState(false);
   const [couponOpen,setCouponOpen]=useState(false);
-  useEffect(()=>{if(!isLive)return;let live=true;fetch('/api/config').then(r=>r.ok?r.json():null).then(c=>{if(live&&c)setPixOn(c.pix===true)}).catch(()=>{});return()=>{live=false}},[]);
+  useEffect(()=>{let live=true;getConfig().then(c=>{if(live)setPixOn(c?.pix===true)});return()=>{live=false}},[]);
   useEffect(()=>{if(!pixOn&&form.payment_method==='Pix')setForm(f=>({...f,payment_method:'Cartão no recebimento'}))},[pixOn,form.payment_method]);
   useEffect(()=>{if(!deliveryOn&&form.fulfillment==='Entrega')setForm(f=>({...f,fulfillment:'Retirada'}))},[deliveryOn,form.fulfillment]);
   const today=localToday();

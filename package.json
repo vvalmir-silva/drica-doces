@@ -1,13 +1,13 @@
 {
   "name": "drica-doces-pro",
   "private": true,
-  "version": "5.0.0",
+  "version": "5.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "check": "node --check api/_shared/utils.js && node --check api/orders/create.js && node --check api/orders/track.js && node --check api/payments/pix.js && node --check api/webhooks/mercadopago.js && node --check api/admin/status.js && node --check api/admin/disable-whatsapp.js && node --check api/availability.js && node --check api/config.js"
+    "check": "node --check api/_shared/utils.js && node --check api/orders/create.js && node --check api/orders/track.js && node --check api/payments/pix.js && node --check api/webhooks/mercadopago.js && node --check api/admin/status.js && node --check api/admin/disable-whatsapp.js && node --check api/availability.js && node --check api/config.js && node --check api/assistant.js"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",
