@@ -137,6 +137,8 @@ export default function GuidedCheckout({cart,products,settings,zones,blocked,onF
   }
   async function generatePix(){if(!result?.items?.length)return;setPayBusy(true);try{setPix(await payPix(result,form.cpf))}catch(err){onNotify(err.message)}finally{setPayBusy(false)}}
 
+  // Carrinho vazio: bloco compacto (o carrinho lateral já mostra o estado vazio).
+  if(!hasItems&&!result&&!largeOrder)return <section id="encomendar" className="scroll-mt-24 py-10 sm:py-14 px-4 sm:px-7"><div className="max-w-3xl mx-auto card p-6 sm:p-8 flex flex-col sm:flex-row items-center gap-5 text-center sm:text-left"><div className="h-14 w-14 rounded-full bg-blush text-rose grid place-items-center shrink-0"><ShoppingBag size={26}/></div><div className="flex-1"><h2 className="font-display text-2xl sm:text-3xl">Pronto para encomendar?</h2><p className="text-taupe text-sm mt-1">Escolha seus doces e finalize aqui em 3 passos: carrinho, entrega e confirmação pelo WhatsApp.</p></div><button type="button" className="btn-dark min-h-12 shrink-0" onClick={onBrowse}>Ver cardápio <ArrowRight size={16}/></button></div></section>;
   return <section id="encomendar" className="scroll-mt-24 py-12 sm:py-20 bg-[linear-gradient(180deg,#fff6f2,#fffbf7)]">
     <div className="max-w-5xl mx-auto px-4 sm:px-7">
       <div className="text-center mb-8"><span className="eyebrow">✦ Encomende com facilidade</span><h2 className="h2 mt-3">Seu carinho em <em className="text-rose">três passos.</em></h2><p className="text-taupe text-sm mt-3">Confira seus doces, escolha a entrega e revise antes de enviar ao WhatsApp.</p></div>
